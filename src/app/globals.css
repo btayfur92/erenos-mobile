@@ -1,26 +1,96 @@
 @import "tailwindcss";
 
+@theme {
+  --color-brand-50: #f1f0fa;
+  --color-brand-100: #e3e0f4;
+  --color-brand-200: #c6bfe8;
+  --color-brand-300: #9e93d6;
+  --color-brand-400: #6f5fbd;
+  --color-brand-500: #4a3aa0;
+  --color-brand-600: #382888;
+  --color-brand-700: #2d2070;
+  --color-brand-800: #221857;
+  --color-brand-900: #17103b;
+
+  --color-accent-50: #fdeced;
+  --color-accent-100: #fbd5d8;
+  --color-accent-500: #e8212f;
+  --color-accent-600: #d80818;
+  --color-accent-700: #b00614;
+
+  --color-ink: #14122b;
+  --color-muted: #6b6a80;
+  --color-line: #e7e6ef;
+  --color-canvas: #f6f6fa;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+
+  --shadow-card: 0 1px 2px rgb(20 18 43 / 0.04), 0 4px 16px -4px rgb(20 18 43 / 0.06);
+  --shadow-float: 0 10px 30px -8px rgb(56 40 136 / 0.45);
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  overscroll-behavior-y: none;
+}
+
+input,
+select,
+textarea {
+  font-size: 16px; /* iOS'ta odaklanınca yakınlaştırmayı önler */
+}
+
+@utility card {
+  @apply rounded-2xl bg-white shadow-card ring-1 ring-line/70;
+}
+
+@utility field-label {
+  @apply mb-1.5 block text-[13px] font-medium text-muted;
+}
+
+@utility input {
+  @apply block w-full rounded-xl border border-line bg-white px-3.5 py-3 text-[16px] text-ink outline-none transition placeholder:text-muted/60 focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[15px] font-semibold transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700;
+}
+
+@utility btn-danger {
+  @apply btn bg-accent-600 text-white shadow-sm hover:bg-accent-700;
+}
+
+@utility btn-secondary {
+  @apply btn bg-white text-ink ring-1 ring-line hover:bg-canvas;
+}
+
+@utility btn-ghost {
+  @apply btn text-brand-600 hover:bg-brand-50;
+}
+
+@utility chip {
+  @apply inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-medium transition;
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
 }
