@@ -105,6 +105,8 @@ export async function setResult(
   lines: { line_id: string; approved_qty: number }[],
 ): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
+  const { data: before } = await supabase.from("records").select("status").eq("id", recordId).single();
+  const wasDecided = before?.status === "onaylandi" || before?.status === "reddedildi";
   const { error } = await supabase.rpc("set_dt_result", {
     p_record_id: recordId,
     p_approved: approved,
@@ -116,7 +118,7 @@ export async function setResult(
   const { data: rec } = await supabase.from("records").select("hospital, file_no").eq("id", recordId).single();
   notify(
     {
-      title: approved ? "Doğrudan temin onaylandı" : "Doğrudan temin reddedildi",
+      title: wasDecided ? "Doğrudan temin sonucu güncellendi" : approved ? "Doğrudan temin onaylandı" : "Doğrudan temin reddedildi",
       body: `${rec?.hospital ?? ""}${rec?.file_no ? ` · ${rec.file_no}` : ""}${approved ? ` · ${lines.length} kalem onaylandı` : ""}`,
       url: `/kayit/${recordId}`,
     },
@@ -183,15 +185,27 @@ export async function cancelShipment(shipmentId: string): Promise<ActionResult> 
   return { ok: true };
 }
 
-export async function setYmStatus(recordId: string, status: "acik" | "ihale_donustu" | "kapandi"): Promise<ActionResult> {
-  const { supabase } = await requireUser();
-  const { error } = await supabase
+/** Yaklaşık maliyet yalnızca takip amaçlı: onaylandı / reddedildi ya da tekrar açık. */
+export async function setYmStatus(recordId: string, status: "acik" | "onaylandi" | "reddedildi"): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  const { data, error } = await supabase
     .from("records")
-    .update({ status })
+    .update({ status, result_at: status === "acik" ? null : new Date().toISOString() })
     .eq("id", recordId)
     .eq("type", "yaklasik_maliyet")
-    .neq("status", "dt_donustu");
+    .select("hospital, file_no")
+    .single();
   if (error) return fail(error);
+  if (status !== "acik") {
+    notify(
+      {
+        title: status === "onaylandi" ? "Yaklaşık maliyet onaylandı" : "Yaklaşık maliyet reddedildi",
+        body: `${data.hospital}${data.file_no ? ` · ${data.file_no}` : ""}`,
+        url: `/kayit/${recordId}`,
+      },
+      user.id,
+    );
+  }
   refresh();
   return { ok: true };
 }

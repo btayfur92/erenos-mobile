@@ -141,7 +141,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-[15px] font-semibold tabular-nums">{formatMoney(Number(l.quantity) * Number(l.unit_price), l.currency)}</p>
-                      {record.status === "onaylandi" && (
+                      {record.status === "onaylandi" && record.type === "dogrudan_temin" && (
                         <span className={`text-[12px] font-semibold ${l.approved ? "text-emerald-700" : "text-accent-600"}`}>
                           {l.approved ? "Onaylandı" : "Onaylanmadı"}
                         </span>

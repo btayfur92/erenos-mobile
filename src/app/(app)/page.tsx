@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileText, Search } from "lucide-react";
+import { CheckCircle2, FileText, Search, XCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
 import { PageHeader } from "@/components/page-header";
@@ -14,8 +14,10 @@ const FILTERS = [
   { key: "ym", label: "Yaklaşık Maliyet" },
 ] as const;
 
-export default async function HomePage({ searchParams }: { searchParams: Promise<{ f?: string; q?: string }> }) {
-  const { f = "gundem", q = "" } = await searchParams;
+export default async function HomePage({ searchParams }: { searchParams: Promise<{ f?: string; q?: string; d?: string }> }) {
+  const { f = "gundem", q = "", d = "onay" } = await searchParams;
+  // Doğrudan Temin ve Yaklaşık Maliyet sekmeleri sonuçlanmış kayıtları Onaylanan / Reddedilen olarak ayırır.
+  const resolved = d === "red" ? "reddedildi" : "onaylandi";
   const { supabase, profile } = await requireUser();
 
   let query = supabase
@@ -29,8 +31,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // Gündem: henüz sonuçlanmamış kayıtlar. Sonuçlananlar kendi tipinin sekmesinde kalır.
   if (f === "gundem") query = query.in("status", ["acik", "arama_bekliyor", "arandi"]);
   if (f === "arama") query = query.eq("status", "arama_bekliyor");
-  if (f === "dt") query = query.eq("type", "dogrudan_temin");
-  if (f === "ym") query = query.eq("type", "yaklasik_maliyet");
+  if (f === "dt") query = query.eq("type", "dogrudan_temin").eq("status", resolved);
+  if (f === "ym") query = query.eq("type", "yaklasik_maliyet").eq("status", resolved);
 
   const term = q.trim().replace(/[%,()]/g, " ");
   if (term) {
@@ -97,6 +99,30 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             );
           })}
         </div>
+
+        {(f === "dt" || f === "ym") && (
+          <div className="mt-3 grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
+            {(
+              [
+                ["onay", "Onaylananlar", CheckCircle2, "bg-emerald-50 text-emerald-700"],
+                ["red", "Reddedilenler", XCircle, "bg-accent-50 text-accent-700"],
+              ] as const
+            ).map(([key, label, Icon, activeCls]) => {
+              const params = new URLSearchParams({ f });
+              if (key === "red") params.set("d", "red");
+              if (q) params.set("q", q);
+              return (
+                <Link
+                  key={key}
+                  href={`/?${params}`}
+                  className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-[14px] font-semibold ${d === key || (key === "onay" && d !== "red") ? activeCls : "text-muted"}`}
+                >
+                  <Icon size={16} /> {label}
+                </Link>
+              );
+            })}
+          </div>
+        )}
 
         <div className="mt-4 space-y-3">
           {records?.length ? (

@@ -8,7 +8,7 @@ import { ProgressBar } from "./line-progress";
 export function RecordCard({ record, progress }: { record: SalesRecord; progress: Map<string, LineProgress> }) {
   const lines = [...(record.record_lines ?? [])].sort((a, b) => a.sort_order - b.sort_order);
   const approvedLines = lines.filter((l) => l.approved);
-  const isApproved = record.status === "onaylandi";
+  const isApproved = record.status === "onaylandi" && record.type === "dogrudan_temin";
   const fullyDelivered =
     isApproved && approvedLines.length > 0 && approvedLines.every((l) => Number(progress.get(l.id)?.remaining ?? 1) <= 0 && Number(progress.get(l.id)?.in_shipment ?? 1) <= 0);
 

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Gavel, Loader2, PhoneCall, Trash2, Truck, Undo2, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, Pencil, PhoneCall, Trash2, Truck, Undo2, XCircle } from "lucide-react";
 import {
   createShipment,
   deleteRecord,
@@ -56,6 +56,7 @@ export function RecordActions({
   const close = () => setSheet(null);
   const isDt = record.type === "dogrudan_temin";
   const canCall = isDt && (record.status === "arama_bekliyor" || record.status === "arandi");
+  const decided = record.status === "onaylandi" || record.status === "reddedildi";
   const canShip =
     record.status === "onaylandi" && lines.some((l) => l.approved && Number(progress[l.id]?.remaining ?? 0) > 0);
   const ym = useAction();
@@ -78,26 +79,32 @@ export function RecordActions({
             <Truck size={18} /> Sevkiyata aktar
           </button>
         )}
-        {record.type === "yaklasik_maliyet" && record.status === "acik" && (
+        {isDt && decided && (
+          <button onClick={() => setSheet("result")} className="btn-secondary">
+            <Pencil size={17} /> Sonucu düzenle
+          </button>
+        )}
+        {!isDt && record.status === "acik" && (
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => ym.run(() => setYmStatus(record.id, "ihale_donustu"))} className="btn-primary" disabled={ym.pending}>
-              <Gavel size={18} /> İhaleye dönüştü
+            <button onClick={() => ym.run(() => setYmStatus(record.id, "onaylandi"))} className="btn-primary" disabled={ym.pending}>
+              <CheckCircle2 size={18} /> Onaylandı
             </button>
-            <button onClick={() => ym.run(() => setYmStatus(record.id, "kapandi"))} className="btn-secondary" disabled={ym.pending}>
-              <CheckCircle2 size={18} /> Sonuçlandı
+            <button onClick={() => ym.run(() => setYmStatus(record.id, "reddedildi"))} className="btn-secondary text-accent-600" disabled={ym.pending}>
+              <XCircle size={18} /> Reddedildi
             </button>
           </div>
         )}
-        {record.type === "yaklasik_maliyet" && (record.status === "ihale_donustu" || record.status === "kapandi") && (
+        {!isDt && decided && (
           <button onClick={() => ym.run(() => setYmStatus(record.id, "acik"))} className="btn-secondary" disabled={ym.pending}>
-            <Undo2 size={18} /> Tekrar aç
+            <Undo2 size={18} /> Sonucu geri al
           </button>
         )}
         <ErrorText error={ym.error} />
       </div>
 
       <CallSheet open={sheet === "call"} onClose={close} record={record} />
-      <ResultSheet open={sheet === "result"} onClose={close} record={record} lines={lines} />
+      {/* Her açılışta güncel sonuçla yeniden başlasın diye yalnızca açıkken bağlanır */}
+      {sheet === "result" && <ResultSheet open onClose={close} record={record} lines={lines} progress={progress} />}
       <ShipmentSheet open={sheet === "ship"} onClose={close} record={record} lines={lines} progress={progress} />
     </>
   );
@@ -161,29 +168,50 @@ function ResultSheet({
   onClose,
   record,
   lines,
+  progress,
 }: {
   open: boolean;
   onClose: () => void;
   record: SalesRecord;
   lines: RecordLine[];
+  progress: Record<string, LineProgress>;
 }) {
   const { pending, error, run, setError } = useAction();
-  const [mode, setMode] = useState<"onay" | "red">("onay");
-  const [note, setNote] = useState("");
+  const editing = record.status === "onaylandi" || record.status === "reddedildi";
+  const [mode, setMode] = useState<"onay" | "red">(record.status === "reddedildi" ? "red" : "onay");
+  const [note, setNote] = useState(editing ? (record.result_note ?? "") : "");
   const [sel, setSel] = useState<Record<string, { on: boolean; qty: string }>>(() =>
-    Object.fromEntries(lines.map((l) => [l.id, { on: true, qty: String(l.quantity).replace(".", ",") }])),
+    Object.fromEntries(
+      lines.map((l) => [
+        l.id,
+        {
+          on: record.status === "onaylandi" ? Boolean(l.approved) : true,
+          qty: String(l.approved_qty ?? l.quantity).replace(".", ","),
+        },
+      ]),
+    ),
   );
+  const shipped = (lineId: string) => Number(progress[lineId]?.in_shipment ?? 0) + Number(progress[lineId]?.delivered ?? 0);
 
   function submit() {
-    if (mode === "red") return run(() => setResult(record.id, false, note, []), onClose);
+    if (mode === "red") {
+      if (lines.some((l) => shipped(l.id) > 0)) return setError("Bu kayıtta sevkiyat var. Reddetmek için önce sevkiyatları iptal edin.");
+      return run(() => setResult(record.id, false, note, []), onClose);
+    }
     const chosen = lines.filter((l) => sel[l.id]?.on).map((l) => ({ line_id: l.id, approved_qty: parseNum(sel[l.id].qty) }));
     if (!chosen.length) return setError("Onaylanan en az bir kalem seçin.");
     if (chosen.some((c) => !(c.approved_qty > 0))) return setError("Onaylanan miktarları kontrol edin.");
+    const blocked = lines.find((l) => shipped(l.id) > (chosen.find((c) => c.line_id === l.id)?.approved_qty ?? 0));
+    if (blocked) {
+      return setError(
+        `${blocked.product_name} için ${formatQty(shipped(blocked.id))} ${blocked.unit} sevkiyata aktarılmış. Onaylanan miktar bunun altına inemez.`,
+      );
+    }
     run(() => setResult(record.id, true, note, chosen), onClose);
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title="Doğrudan temin sonucu">
+    <Sheet open={open} onClose={onClose} title={editing ? "Sonucu düzenle" : "Doğrudan temin sonucu"}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-1 rounded-2xl bg-canvas p-1">
           <button
@@ -222,7 +250,7 @@ function ResultSheet({
                     </span>
                   </label>
                   {s.on && (
-                    <div className="mt-2.5 flex items-center gap-2 pl-8">
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-8">
                       <span className="text-[13px] text-muted">Onaylanan</span>
                       <input
                         value={s.qty}
@@ -232,6 +260,11 @@ function ResultSheet({
                         aria-label={`${l.product_name} onaylanan miktar`}
                       />
                       <span className="text-[13px] text-muted">{l.unit}</span>
+                      {shipped(l.id) > 0 && (
+                        <span className="w-full text-[12px] text-muted">
+                          {formatQty(shipped(l.id))} {l.unit} sevkiyata aktarıldı, bunun altına inilemez.
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

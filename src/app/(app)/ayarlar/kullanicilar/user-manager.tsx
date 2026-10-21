@@ -169,22 +169,34 @@ function EditUserSheet({ user, self, onClose }: { user: Profile; self: boolean; 
   const { pending, result, run } = useRun();
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState(user.full_name);
+  const [username, setUsername] = useState(user.username);
+  const changed = fullName.trim() !== user.full_name || normalizeUsername(username) !== user.username;
 
   return (
     <Sheet open onClose={onClose} title={user.full_name || user.username}>
       <div className="space-y-5">
-        <div>
-          <label className="field-label">Ad soyad</label>
-          <div className="flex gap-2">
+        <div className="space-y-3">
+          <div>
+            <label className="field-label">Ad soyad</label>
             <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} />
-            <button
-              className="btn-secondary px-3"
-              disabled={pending || fullName === user.full_name}
-              onClick={() => run(() => updateUser(user.id, { full_name: fullName.trim() }))}
-            >
-              Kaydet
-            </button>
           </div>
+          <div>
+            <label className="field-label">Kullanıcı adı</label>
+            <input
+              className="input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+            />
+          </div>
+          <button
+            className="btn-primary w-full"
+            disabled={pending || !changed || !fullName.trim()}
+            onClick={() => run(() => updateUser(user.id, { full_name: fullName.trim(), username }))}
+          >
+            Bilgileri kaydet
+          </button>
         </div>
         <div>
           <label className="field-label">Yeni şifre</label>
@@ -214,6 +226,9 @@ function EditUserSheet({ user, self, onClose }: { user: Profile; self: boolean; 
             >
               {user.active ? <UserX size={17} /> : <UserCheck size={17} />} {user.active ? "Pasife al" : "Aktif et"}
             </button>
+            <p className="col-span-2 text-[12px] text-muted">
+              Yönetici yapılan kullanıcı sizinle aynı yetkilere sahip olur: kullanıcı ekleyebilir, düzenleyebilir ve yönetici atayabilir.
+            </p>
           </div>
         )}
         <Result r={result} />

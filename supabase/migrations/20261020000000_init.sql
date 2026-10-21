@@ -15,13 +15,10 @@ create type public.record_type as enum (
   'genel_siparis'     -- ileride
 );
 
--- YM:  acik -> dt_donustu | ihale_donustu | kapandi
+-- YM:  acik -> onaylandi | reddedildi   (yalnızca takip amaçlı)
 -- DT:  arama_bekliyor -> arandi -> onaylandi | reddedildi
 create type public.record_status as enum (
   'acik',
-  'dt_donustu',
-  'ihale_donustu',
-  'kapandi',
   'arama_bekliyor',
   'arandi',
   'onaylandi',
@@ -108,7 +105,7 @@ create table public.records (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint records_status_matches_type check (
-    (type = 'yaklasik_maliyet' and status in ('acik', 'dt_donustu', 'ihale_donustu', 'kapandi'))
+    (type = 'yaklasik_maliyet' and status in ('acik', 'onaylandi', 'reddedildi'))
     or (type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'onaylandi', 'reddedildi'))
     or (type in ('ihale_siparisi', 'genel_siparis'))
   )
@@ -337,7 +334,9 @@ begin
 end;
 $$;
 
--- DT sonucu. p_lines (onayda): [{line_id, approved_qty}] — listede olmayan kalemler reddedilmiş sayılır.
+-- DT sonucu (ilk giriş veya sonradan düzeltme).
+-- p_lines (onayda): [{line_id, approved_qty}] — listede olmayan kalemler reddedilmiş sayılır.
+-- Sevkiyata aktarılmış miktarın altına inilemez.
 create or replace function public.set_dt_result(
   p_record_id uuid,
   p_approved boolean,
@@ -353,10 +352,13 @@ declare
   v_line jsonb;
   v_qty numeric;
   v_max numeric;
+  v_product text;
+  v_shipped numeric;
 begin
   if not exists (
     select 1 from records
-    where id = p_record_id and type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi')
+    where id = p_record_id and type = 'dogrudan_temin'
+      and status in ('arama_bekliyor', 'arandi', 'onaylandi', 'reddedildi')
   ) then
     raise exception 'Bu kayıt için sonuç girilemez.';
   end if;
@@ -381,6 +383,19 @@ begin
     end loop;
   else
     update record_lines set approved = false, approved_qty = null where record_id = p_record_id;
+  end if;
+
+  select l.product_name, coalesce(sum(si.quantity), 0)
+  into v_product, v_shipped
+  from record_lines l
+  join shipment_items si on si.line_id = l.id
+  where l.record_id = p_record_id
+  group by l.id, l.product_name, l.approved_qty
+  having coalesce(sum(si.quantity), 0) > coalesce(l.approved_qty, 0)
+  limit 1;
+  if v_product is not null then
+    raise exception '% için % sevkiyata aktarılmış. Onaylanan miktar bunun altına inemez; gerekirse önce sevkiyatı iptal edin.',
+      v_product, v_shipped;
   end if;
 
   update records

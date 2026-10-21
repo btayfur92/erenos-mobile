@@ -2,9 +2,6 @@ export type RecordType = "yaklasik_maliyet" | "dogrudan_temin" | "ihale_siparisi
 
 export type RecordStatus =
   | "acik"
-  | "dt_donustu"
-  | "ihale_donustu"
-  | "kapandi"
   | "arama_bekliyor"
   | "arandi"
   | "onaylandi"
@@ -110,9 +107,6 @@ export const RECORD_TYPE_SHORT: Record<RecordType, string> = {
 
 export const STATUS_LABEL: Record<RecordStatus, string> = {
   acik: "Açık",
-  dt_donustu: "Doğrudan temine dönüştü",
-  ihale_donustu: "İhaleye dönüştü",
-  kapandi: "Sonuçlandı",
   arama_bekliyor: "Arama bekliyor",
   arandi: "Arandı, sonuç bekleniyor",
   onaylandi: "Onaylandı",

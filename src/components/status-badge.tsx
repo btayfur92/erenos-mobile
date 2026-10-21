@@ -2,9 +2,6 @@ import { STATUS_LABEL, type RecordStatus } from "@/lib/types";
 
 const STYLE: Record<RecordStatus, string> = {
   acik: "bg-brand-50 text-brand-700",
-  dt_donustu: "bg-canvas text-muted",
-  ihale_donustu: "bg-canvas text-muted",
-  kapandi: "bg-canvas text-muted",
   arama_bekliyor: "bg-accent-50 text-accent-700",
   arandi: "bg-amber-50 text-amber-700",
   onaylandi: "bg-emerald-50 text-emerald-700",

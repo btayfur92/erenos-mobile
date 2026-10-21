@@ -45,13 +45,27 @@ export async function resetPassword(userId: string, password: string): Promise<U
 
 export async function updateUser(
   userId: string,
-  patch: { full_name?: string; is_admin?: boolean; active?: boolean },
+  patch: { full_name?: string; username?: string; is_admin?: boolean; active?: boolean },
 ): Promise<UserActionResult> {
   const { user } = await requireAdmin();
   if (userId === user.id && (patch.is_admin === false || patch.active === false)) {
     return { ok: false, error: "Kendi yönetici yetkinizi kaldıramaz veya kendinizi pasife alamazsınız." };
   }
   const admin = createAdminClient();
+
+  if (patch.username !== undefined) {
+    patch.username = normalizeUsername(patch.username);
+    if (patch.username.length < 3) return { ok: false, error: "Kullanıcı adı en az 3 karakter olmalı (harf, rakam, nokta)." };
+    const { data: taken } = await admin.from("profiles").select("id").eq("username", patch.username).neq("id", userId).maybeSingle();
+    if (taken) return { ok: false, error: "Bu kullanıcı adı zaten kullanılıyor." };
+    // Giriş e-postası kullanıcı adından türetildiği için onu da güncelle.
+    const { error: authError } = await admin.auth.admin.updateUserById(userId, {
+      email: usernameToEmail(patch.username),
+      email_confirm: true,
+    });
+    if (authError) return { ok: false, error: authError.message };
+  }
+
   const { error } = await admin.from("profiles").update(patch).eq("id", userId);
   if (error) return { ok: false, error: error.message };
 
@@ -61,5 +75,5 @@ export async function updateUser(
     if (!patch.active) await admin.from("push_subscriptions").delete().eq("user_id", userId);
   }
   revalidatePath("/ayarlar/kullanicilar");
-  return { ok: true };
+  return { ok: true, message: "Kaydedildi." };
 }
