@@ -112,7 +112,7 @@ export const STATUS_LABEL: Record<RecordStatus, string> = {
   acik: "Açık",
   dt_donustu: "Doğrudan temine dönüştü",
   ihale_donustu: "İhaleye dönüştü",
-  kapandi: "Kapandı",
+  kapandi: "Sonuçlandı",
   arama_bekliyor: "Arama bekliyor",
   arandi: "Arandı, sonuç bekleniyor",
   onaylandi: "Onaylandı",

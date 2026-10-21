@@ -8,30 +8,29 @@ import { EmptyState } from "@/components/empty-state";
 import type { SalesRecord } from "@/lib/types";
 
 const FILTERS = [
-  { key: "tumu", label: "Tümü" },
+  { key: "gundem", label: "Gündem" },
   { key: "arama", label: "Arama bekleyen" },
   { key: "dt", label: "Doğrudan Temin" },
   { key: "ym", label: "Yaklaşık Maliyet" },
-  { key: "onay", label: "Onaylanan" },
 ] as const;
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ f?: string; q?: string }> }) {
-  const { f = "tumu", q = "" } = await searchParams;
+  const { f = "gundem", q = "" } = await searchParams;
   const { supabase, profile } = await requireUser();
 
   let query = supabase
     .from("records")
     .select("*, record_lines(*)")
     .in("type", ["yaklasik_maliyet", "dogrudan_temin"])
-    .neq("status", "reddedildi")
     .order("record_date", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(300);
 
+  // Gündem: henüz sonuçlanmamış kayıtlar. Sonuçlananlar kendi tipinin sekmesinde kalır.
+  if (f === "gundem") query = query.in("status", ["acik", "arama_bekliyor", "arandi"]);
   if (f === "arama") query = query.eq("status", "arama_bekliyor");
   if (f === "dt") query = query.eq("type", "dogrudan_temin");
   if (f === "ym") query = query.eq("type", "yaklasik_maliyet");
-  if (f === "onay") query = query.eq("status", "onaylandi");
 
   const term = q.trim().replace(/[%,()]/g, " ");
   if (term) {
@@ -71,7 +70,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         )}
 
         <form className="relative" action="">
-          {f !== "tumu" && <input type="hidden" name="f" value={f} />}
+          {f !== "gundem" && <input type="hidden" name="f" value={f} />}
           <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
           <input name="q" defaultValue={q} placeholder="Hastane, dosya no veya ürün ara" className="input pl-10" type="search" enterKeyHint="search" />
         </form>
@@ -79,7 +78,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
           {FILTERS.map((x) => {
             const params = new URLSearchParams();
-            if (x.key !== "tumu") params.set("f", x.key);
+            if (x.key !== "gundem") params.set("f", x.key);
             if (q) params.set("q", q);
             const active = f === x.key;
             return (

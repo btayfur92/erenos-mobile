@@ -430,37 +430,6 @@ begin
 end;
 $$;
 
--- YM -> DT dönüşümü: kalemleri kopyalayarak yeni DT kaydı açar.
-create or replace function public.convert_ym_to_dt(p_record_id uuid, p_record_date date)
-returns uuid
-language plpgsql
-security invoker
-set search_path = public
-as $$
-declare
-  v_src records;
-  v_id uuid;
-begin
-  select * into v_src from records
-  where id = p_record_id and type = 'yaklasik_maliyet' and status = 'acik';
-  if v_src.id is null then
-    raise exception 'Sadece açık yaklaşık maliyet kayıtları dönüştürülebilir.';
-  end if;
-
-  insert into records (type, status, record_date, file_no, hospital, contact_name, contact_phone, notes, source_record_id)
-  values ('dogrudan_temin', 'arama_bekliyor', coalesce(p_record_date, current_date), v_src.file_no,
-          v_src.hospital, v_src.contact_name, v_src.contact_phone, v_src.notes, v_src.id)
-  returning id into v_id;
-
-  insert into record_lines (record_id, sort_order, product_name, quantity, unit, unit_price, currency)
-  select v_id, sort_order, product_name, quantity, unit, unit_price, currency
-  from record_lines where record_id = v_src.id;
-
-  update records set status = 'dt_donustu', converted_record_id = v_id where id = v_src.id;
-  return v_id;
-end;
-$$;
-
 -- ---------------------------------------------------------------------------
 -- RLS: şimdilik aktif her kullanıcı her işi yapabilir; kullanıcı yönetimi adminde.
 -- ---------------------------------------------------------------------------

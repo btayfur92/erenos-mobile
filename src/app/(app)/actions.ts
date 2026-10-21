@@ -183,23 +183,6 @@ export async function cancelShipment(shipmentId: string): Promise<ActionResult> 
   return { ok: true };
 }
 
-export async function convertToDt(recordId: string, recordDate: string): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
-  const { data, error } = await supabase.rpc("convert_ym_to_dt", { p_record_id: recordId, p_record_date: recordDate });
-  if (error) return fail(error);
-  const { data: rec } = await supabase.from("records").select("hospital, file_no").eq("id", data).single();
-  notify(
-    {
-      title: "Yaklaşık maliyet doğrudan temine dönüştü",
-      body: `${rec?.hospital ?? ""}${rec?.file_no ? ` · ${rec.file_no}` : ""}`,
-      url: `/kayit/${data}`,
-    },
-    user.id,
-  );
-  refresh();
-  return { ok: true, id: data as string };
-}
-
 export async function setYmStatus(recordId: string, status: "acik" | "ihale_donustu" | "kapandi"): Promise<ActionResult> {
   const { supabase } = await requireUser();
   const { error } = await supabase

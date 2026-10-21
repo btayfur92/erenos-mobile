@@ -86,7 +86,8 @@ curl -H "Authorization: Bearer <CRON_SECRET>" "https://<site>/mobiluygulama/api/
 | **Sonuç gir → Onaylandı** | Onaylanan kalemler seçilir, miktarlar düzeltilir; onaylanmayan kalemler Reddedilenler'de görünür |
 | **Sevkiyata aktar** | Hastanenin istediği miktar Sevkiyat'a düşer (kalan sonra aktarılabilir) |
 | **Teslim edildi** | Ana ekranda teslim/kalan güncellenir |
-| Yaklaşık maliyet | Doğrudan temine dönüştürülebilir (ürünler kopyalanır) veya *İhaleye dönüştü* işaretlenir |
+| Yaklaşık maliyet | *İhaleye dönüştü* veya *Sonuçlandı* olarak işaretlenir |
+| Ana ekran | **Gündem** sekmesinde yalnızca sonuçlanmamış kayıtlar görünür; sonuçlananlar kendi tipinin sekmesinde (Doğrudan Temin / Yaklaşık Maliyet) kalır |
 
 Bildirimler, işlemi yapan kişi hariç herkese gider (`src/app/(app)/actions.ts` içindeki `notify`). Arama hatırlatmaları herkese gider.
 

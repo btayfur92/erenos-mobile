@@ -2,9 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, CheckCircle2, FileOutput, Gavel, Loader2, PhoneCall, Trash2, Truck, Undo2, XCircle } from "lucide-react";
+import { CheckCircle2, Gavel, Loader2, PhoneCall, Trash2, Truck, Undo2, XCircle } from "lucide-react";
 import {
-  convertToDt,
   createShipment,
   deleteRecord,
   logCall,
@@ -13,7 +12,7 @@ import {
   type ActionResult,
 } from "@/app/(app)/actions";
 import { Sheet } from "./sheet";
-import { formatMoney, formatQty, todayIstanbul } from "@/lib/format";
+import { formatMoney, formatQty } from "@/lib/format";
 import type { LineProgress, RecordLine, SalesRecord } from "@/lib/types";
 
 function parseNum(v: string) {
@@ -53,7 +52,7 @@ export function RecordActions({
   lines: RecordLine[];
   progress: Record<string, LineProgress>;
 }) {
-  const [sheet, setSheet] = useState<null | "call" | "result" | "ship" | "convert">(null);
+  const [sheet, setSheet] = useState<null | "call" | "result" | "ship">(null);
   const close = () => setSheet(null);
   const isDt = record.type === "dogrudan_temin";
   const canCall = isDt && (record.status === "arama_bekliyor" || record.status === "arandi");
@@ -81,22 +80,13 @@ export function RecordActions({
         )}
         {record.type === "yaklasik_maliyet" && record.status === "acik" && (
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => setSheet("convert")} className="btn-primary">
-              <FileOutput size={18} /> Doğrudan temine dönüştür
-            </button>
-            <button
-              onClick={() => ym.run(() => setYmStatus(record.id, "ihale_donustu"))}
-              className="btn-secondary"
-              disabled={ym.pending}
-            >
+            <button onClick={() => ym.run(() => setYmStatus(record.id, "ihale_donustu"))} className="btn-primary" disabled={ym.pending}>
               <Gavel size={18} /> İhaleye dönüştü
             </button>
+            <button onClick={() => ym.run(() => setYmStatus(record.id, "kapandi"))} className="btn-secondary" disabled={ym.pending}>
+              <CheckCircle2 size={18} /> Sonuçlandı
+            </button>
           </div>
-        )}
-        {record.type === "yaklasik_maliyet" && record.status === "acik" && (
-          <button onClick={() => ym.run(() => setYmStatus(record.id, "kapandi"))} className="btn-ghost" disabled={ym.pending}>
-            Sonuçsuz kapat
-          </button>
         )}
         {record.type === "yaklasik_maliyet" && (record.status === "ihale_donustu" || record.status === "kapandi") && (
           <button onClick={() => ym.run(() => setYmStatus(record.id, "acik"))} className="btn-secondary" disabled={ym.pending}>
@@ -109,7 +99,6 @@ export function RecordActions({
       <CallSheet open={sheet === "call"} onClose={close} record={record} />
       <ResultSheet open={sheet === "result"} onClose={close} record={record} lines={lines} />
       <ShipmentSheet open={sheet === "ship"} onClose={close} record={record} lines={lines} progress={progress} />
-      <ConvertSheet open={sheet === "convert"} onClose={close} record={record} />
     </>
   );
 }
@@ -330,35 +319,6 @@ function ShipmentSheet({
         <ErrorText error={error} />
         <button className="btn-primary w-full" disabled={pending} onClick={submit}>
           <Spinner show={pending} /> <Truck size={18} /> Sevkiyata gönder
-        </button>
-      </div>
-    </Sheet>
-  );
-}
-
-function ConvertSheet({ open, onClose, record }: { open: boolean; onClose: () => void; record: SalesRecord }) {
-  const router = useRouter();
-  const { pending, error, run } = useAction();
-  const [date, setDate] = useState(todayIstanbul());
-  return (
-    <Sheet open={open} onClose={onClose} title="Doğrudan temine dönüştür">
-      <div className="space-y-4">
-        <p className="text-sm text-muted">
-          Bu yaklaşık maliyetin bilgileri ve ürünleriyle yeni bir doğrudan temin kaydı açılır. Ürün ve fiyatları sonra düzenleyebilirsiniz.
-        </p>
-        <div>
-          <label className="field-label" htmlFor="dt-date">
-            Doğrudan temin tarihi
-          </label>
-          <input id="dt-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" />
-        </div>
-        <ErrorText error={error} />
-        <button
-          className="btn-primary w-full"
-          disabled={pending}
-          onClick={() => run(() => convertToDt(record.id, date), (r) => (onClose(), router.push(`/kayit/${r.id}`)))}
-        >
-          <Spinner show={pending} /> <Check size={18} /> Dönüştür
         </button>
       </div>
     </Sheet>
