@@ -52,6 +52,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
   const progress: Record<string, LineProgress> = Object.fromEntries(progressMap);
   const lines = [...(record.record_lines ?? [])].sort((a, b) => a.sort_order - b.sort_order);
   const decided = record.status === "onaylandi" || record.status === "reddedildi";
+  const approvedDt = record.status === "onaylandi" && record.type === "dogrudan_temin";
   const source = linked.data?.find((r) => r.id === record.source_record_id);
   const converted = linked.data?.find((r) => r.id === record.converted_record_id);
 
@@ -80,8 +81,10 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
             </div>
             <h2 className="mt-3 text-xl font-semibold leading-snug">{record.hospital}</h2>
             <p className="mt-0.5 text-[14px] text-white/75">{record.file_no ? `Dosya / ihale no: ${record.file_no}` : "Dosya no girilmedi"}</p>
-            <p className="mt-4 text-[13px] text-white/70">Toplam teklif</p>
-            <p className="text-2xl font-semibold tabular-nums tracking-tight">{totalsByCurrency(lines)}</p>
+            <p className="mt-4 text-[13px] text-white/70">{approvedDt ? "Onaylanan toplam" : "Toplam teklif"}</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">
+              {totalsByCurrency(approvedDt ? lines.filter((l) => l.approved).map((l) => ({ ...l, quantity: Number(l.approved_qty ?? 0) })) : lines)}
+            </p>
           </div>
           <div className="space-y-3 p-4">
             <div className="flex items-center justify-between">
@@ -130,17 +133,19 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
             {lines.map((l) => {
               const p = progress[l.id];
               const rejected = decided && l.approved === false;
+              // Onaylanan kalemde toplam adet artık onaylanan adettir; teklif adedi gösterilmez.
+              const qty = record.status === "onaylandi" && l.approved ? Number(l.approved_qty ?? l.quantity) : Number(l.quantity);
               return (
                 <div key={l.id} className={`card p-4 ${rejected ? "opacity-60" : ""}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[15px] font-semibold leading-snug">{l.product_name}</p>
                       <p className="mt-0.5 text-[13px] text-muted">
-                        {formatQty(l.quantity)} {l.unit} × {formatMoney(l.unit_price, l.currency)}
+                        {formatQty(qty)} {l.unit} × {formatMoney(l.unit_price, l.currency)}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="text-[15px] font-semibold tabular-nums">{formatMoney(Number(l.quantity) * Number(l.unit_price), l.currency)}</p>
+                      <p className="text-[15px] font-semibold tabular-nums">{formatMoney(qty * Number(l.unit_price), l.currency)}</p>
                       {record.status === "onaylandi" && record.type === "dogrudan_temin" && (
                         <span className={`text-[12px] font-semibold ${l.approved ? "text-emerald-700" : "text-accent-600"}`}>
                           {l.approved ? "Onaylandı" : "Onaylanmadı"}

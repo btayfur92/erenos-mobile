@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, FileText, Search, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, FileText, Search, XCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
 import { PageHeader } from "@/components/page-header";
@@ -15,9 +15,11 @@ const FILTERS = [
 ] as const;
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ f?: string; q?: string; d?: string }> }) {
-  const { f = "gundem", q = "", d = "onay" } = await searchParams;
-  // Doğrudan Temin ve Yaklaşık Maliyet sekmeleri sonuçlanmış kayıtları Onaylanan / Reddedilen olarak ayırır.
-  const resolved = d === "red" ? "reddedildi" : "onaylandi";
+  const { f = "gundem", q = "", d: dParam } = await searchParams;
+  // Doğrudan Temin sekmesi sonuçlanmış kayıtları Onaylanan / Reddedilen olarak ayırır.
+  // Yaklaşık maliyetler Gündem'e girmez; kendi sekmesinde Bekleyen / Onaylanan / Reddedilen olarak durur.
+  const d = dParam ?? (f === "ym" ? "bekle" : "onay");
+  const resolved = d === "red" ? "reddedildi" : d === "bekle" && f === "ym" ? "acik" : "onaylandi";
   const { supabase, profile } = await requireUser();
 
   let query = supabase
@@ -28,8 +30,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     .order("created_at", { ascending: false })
     .limit(300);
 
-  // Gündem: henüz sonuçlanmamış kayıtlar. Sonuçlananlar kendi tipinin sekmesinde kalır.
-  if (f === "gundem") query = query.in("status", ["acik", "arama_bekliyor", "arandi"]);
+  // Gündem: henüz sonuçlanmamış doğrudan teminler.
+  if (f === "gundem") query = query.eq("type", "dogrudan_temin").in("status", ["arama_bekliyor", "arandi"]);
   if (f === "arama") query = query.eq("status", "arama_bekliyor");
   if (f === "dt") query = query.eq("type", "dogrudan_temin").eq("status", resolved);
   if (f === "ym") query = query.eq("type", "yaklasik_maliyet").eq("status", resolved);
@@ -73,6 +75,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
         <form className="relative" action="">
           {f !== "gundem" && <input type="hidden" name="f" value={f} />}
+          {dParam && <input type="hidden" name="d" value={dParam} />}
           <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
           <input name="q" defaultValue={q} placeholder="Hastane, dosya no veya ürün ara" className="input pl-10" type="search" enterKeyHint="search" />
         </form>
@@ -101,21 +104,22 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         </div>
 
         {(f === "dt" || f === "ym") && (
-          <div className="mt-3 grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
+          <div className={`mt-3 grid gap-1 rounded-2xl bg-white p-1 ring-1 ring-line ${f === "ym" ? "grid-cols-3" : "grid-cols-2"}`}>
             {(
               [
+                ...(f === "ym" ? ([["bekle", "Bekleyenler", Clock, "bg-brand-50 text-brand-700"]] as const) : []),
                 ["onay", "Onaylananlar", CheckCircle2, "bg-emerald-50 text-emerald-700"],
                 ["red", "Reddedilenler", XCircle, "bg-accent-50 text-accent-700"],
               ] as const
             ).map(([key, label, Icon, activeCls]) => {
               const params = new URLSearchParams({ f });
-              if (key === "red") params.set("d", "red");
+              if (key !== (f === "ym" ? "bekle" : "onay")) params.set("d", key);
               if (q) params.set("q", q);
               return (
                 <Link
                   key={key}
                   href={`/?${params}`}
-                  className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-[14px] font-semibold ${d === key || (key === "onay" && d !== "red") ? activeCls : "text-muted"}`}
+                  className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-[14px] font-semibold ${d === key ? activeCls : "text-muted"}`}
                 >
                   <Icon size={16} /> {label}
                 </Link>
