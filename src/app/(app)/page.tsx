@@ -7,13 +7,15 @@ import { PageHeader } from "@/components/page-header";
 import { RecordCard } from "@/components/record-card";
 import { EmptyState } from "@/components/empty-state";
 import { ChipStrip } from "@/components/chip-strip";
+import { RejectedList } from "@/components/rejected-list";
 import type { SalesRecord } from "@/lib/types";
 
 const FILTERS = [
   { key: "gundem", label: "Gündem" },
-  { key: "arama", label: "Arama bekleyen" },
   { key: "dt", label: "Doğrudan Temin" },
   { key: "ym", label: "Yaklaşık Maliyet" },
+  { key: "arama", label: "Arama bekleyen" },
+  { key: "red", label: "Reddedilen" },
 ] as const;
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ f?: string; q?: string; d?: string }> }) {
@@ -47,8 +49,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     query = query.or(ors.join(","));
   }
 
+  // "Reddedilen" sekmesi kayıt yerine fiyat arşivini (RejectedList) gösterir.
   const [{ data: records }, { count: waitingCount }] = await Promise.all([
-    query.returns<SalesRecord[]>(),
+    f === "red" ? Promise.resolve({ data: [] as SalesRecord[] }) : query.returns<SalesRecord[]>(),
     supabase.from("records").select("id", { count: "exact", head: true }).eq("status", "arama_bekliyor"),
   ]);
   const [progress, rates] = await Promise.all([
@@ -82,7 +85,14 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           {f !== "gundem" && <input type="hidden" name="f" value={f} />}
           {dParam && <input type="hidden" name="d" value={dParam} />}
           <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
-          <input name="q" defaultValue={q} placeholder="Hastane, dosya no veya ürün ara" className="input pl-10" type="search" enterKeyHint="search" />
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="Hastane, dosya no veya ürün ara"
+            className="input pl-10"
+            type="search"
+            enterKeyHint="search"
+          />
         </form>
 
         <ChipStrip>
@@ -135,23 +145,27 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </div>
         )}
 
-        <div className="mt-4 space-y-3">
-          {records?.length ? (
-            records.map((r) => <RecordCard key={r.id} record={r} progress={progress} rates={rates} />)
-          ) : (
-            <EmptyState
-              icon={<FileText size={26} />}
-              title={term ? "Sonuç bulunamadı" : "Henüz kayıt yok"}
-              text={term ? "Farklı bir arama deneyin." : "İlk yaklaşık maliyet veya doğrudan temin kaydını ekleyin."}
-            >
-              {!term && (
-                <Link href="/yeni" className="btn-primary">
-                  Yeni kayıt
-                </Link>
-              )}
-            </EmptyState>
-          )}
-        </div>
+        {f === "red" ? (
+          <RejectedList supabase={supabase} term={term} />
+        ) : (
+          <div className="mt-4 space-y-3">
+            {records?.length ? (
+              records.map((r) => <RecordCard key={r.id} record={r} progress={progress} rates={rates} />)
+            ) : (
+              <EmptyState
+                icon={<FileText size={26} />}
+                title={term ? "Sonuç bulunamadı" : "Henüz kayıt yok"}
+                text={term ? "Farklı bir arama deneyin." : "İlk yaklaşık maliyet veya doğrudan temin kaydını ekleyin."}
+              >
+                {!term && (
+                  <Link href="/yeni" className="btn-primary">
+                    Yeni kayıt
+                  </Link>
+                )}
+              </EmptyState>
+            )}
+          </div>
+        )}
       </main>
     </>
   );

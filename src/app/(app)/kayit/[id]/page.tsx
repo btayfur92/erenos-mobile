@@ -62,7 +62,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
       <PageHeader
         title={record.hospital}
         subtitle={RECORD_TYPE_LABEL[record.type]}
-        back={record.status === "reddedildi" ? "/reddedilenler" : "/"}
+        back={record.status === "reddedildi" ? "/?f=red" : "/"}
         action={
           !decided && (
             <Link href={`/kayit/${id}/duzenle`} className="grid h-10 w-10 place-items-center rounded-xl text-brand-600 hover:bg-brand-50" aria-label="Düzenle">
