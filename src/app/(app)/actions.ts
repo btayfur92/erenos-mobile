@@ -139,12 +139,15 @@ export async function createShipment(
   recordId: string,
   note: string,
   items: { line_id: string; quantity: number }[],
+  plannedDate: string,
 ): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(plannedDate)) return { ok: false, error: "Sevk tarihini seçin." };
   const { data, error } = await supabase.rpc("create_shipment", {
     p_record_id: recordId,
     p_note: note,
     p_items: items.filter((i) => Number(i.quantity) > 0),
+    p_planned_date: plannedDate,
   });
   if (error) return fail(error);
 
@@ -224,3 +227,108 @@ export async function deleteRecord(recordId: string): Promise<ActionResult> {
   refresh();
   return { ok: true };
 }
+
+// ---------------------------------------------------------------------------
+// Gelecek sevkiyatlar (tedarikçiden gelecek ürünler)
+// ---------------------------------------------------------------------------
+
+export interface IncomingInput {
+  supplier: string;
+  product_details: string;
+  quantity: number | null;
+  unit: string;
+  expected_date: string;
+  note: string;
+}
+
+export async function createIncoming(input: IncomingInput): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (!input.supplier.trim()) return { ok: false, error: "Tedarikçi adı gerekli." };
+  if (!input.product_details.trim()) return { ok: false, error: "Ürün detayını girin." };
+  if (input.quantity !== null && !(input.quantity > 0)) return { ok: false, error: "Miktar sıfırdan büyük olmalı ya da boş bırakılmalı." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.expected_date)) return { ok: false, error: "Beklenen tarihi seçin." };
+  const { data, error } = await supabase
+    .from("incoming_shipments")
+    .insert({
+      supplier: input.supplier.trim(),
+      product_details: input.product_details.trim(),
+      quantity: input.quantity,
+      unit: input.quantity !== null ? input.unit : null,
+      expected_date: input.expected_date,
+      note: input.note.trim() || null,
+    })
+    .select("id")
+    .single();
+  if (error) return fail(error);
+  notify({ title: `Gelecek sevkiyat: ${input.supplier.trim()}`, body: input.product_details.trim(), url: "/sevkiyat" }, user.id);
+  refresh();
+  return { ok: true, id: data.id };
+}
+
+export async function markReceived(id: string): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  const { data, error } = await supabase
+    .from("incoming_shipments")
+    .update({ status: "teslim_alindi", received_at: new Date().toISOString(), received_by: user.id })
+    .eq("id", id)
+    .eq("status", "bekliyor")
+    .select("supplier, product_details")
+    .single();
+  if (error) return fail(error);
+  notify({ title: `Sevkiyat teslim alındı: ${data.supplier}`, body: data.product_details, url: "/sevkiyat?d=tamam" }, user.id);
+  refresh();
+  return { ok: true };
+}
+
+export async function cancelIncoming(id: string): Promise<ActionResult> {
+  const { supabase } = await requireUser();
+  const { error } = await supabase.from("incoming_shipments").delete().eq("id", id).eq("status", "bekliyor");
+  if (error) return fail(error);
+  refresh();
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Görüşmeler (hastane ziyaret notları)
+// ---------------------------------------------------------------------------
+
+export interface MeetingInput {
+  id?: string;
+  meeting_date: string;
+  hospital: string;
+  department: string;
+  note: string;
+}
+
+export async function saveMeeting(input: MeetingInput): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.meeting_date)) return { ok: false, error: "Görüşme tarihini seçin." };
+  if (!input.hospital.trim()) return { ok: false, error: "Hastane adı gerekli." };
+  if (!input.department.trim()) return { ok: false, error: "Servis gerekli." };
+  if (!input.note.trim()) return { ok: false, error: "Görüşme notunu yazın." };
+  const fields = {
+    meeting_date: input.meeting_date,
+    hospital: input.hospital.trim(),
+    department: input.department.trim(),
+    note: input.note.trim(),
+  };
+
+  // Düzeltme: bildirim gönderilmez, kimin düzelttiği kaydedilir.
+  if (input.id) {
+    const { error } = await supabase
+      .from("meetings")
+      .update({ ...fields, updated_by: user.id, updated_at: new Date().toISOString() })
+      .eq("id", input.id);
+    if (error) return fail(error);
+    refresh();
+    return { ok: true, id: input.id };
+  }
+
+  const { data, error } = await supabase.from("meetings").insert(fields).select("id").single();
+  if (error) return fail(error);
+  const excerpt = fields.note.length > 120 ? `${fields.note.slice(0, 117)}…` : fields.note;
+  notify({ title: `Yeni görüşme notu: ${fields.hospital}`, body: `${fields.department} · ${excerpt}`, url: "/gorusmeler" }, user.id);
+  refresh();
+  return { ok: true, id: data.id };
+}
+

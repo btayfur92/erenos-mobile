@@ -75,12 +75,44 @@ export interface Shipment {
   record_id: string;
   status: ShipmentStatus;
   note: string | null;
+  planned_date: string;
   requested_at: string;
   delivered_at: string | null;
   delivered_by: string | null;
   created_by: string | null;
   shipment_items?: ShipmentItem[];
   records?: Pick<SalesRecord, "id" | "hospital" | "file_no" | "record_date"> | null;
+}
+
+export type IncomingStatus = "bekliyor" | "teslim_alindi";
+
+/** Gelecek sevkiyat: tedarikçiden bize gelecek ürünler. */
+export interface IncomingShipment {
+  id: string;
+  supplier: string;
+  product_details: string;
+  quantity: number | null;
+  unit: string | null;
+  expected_date: string;
+  note: string | null;
+  status: IncomingStatus;
+  received_at: string | null;
+  received_by: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Hastane ziyaretinde alınan görüşme notu. */
+export interface Meeting {
+  id: string;
+  meeting_date: string;
+  hospital: string;
+  department: string;
+  note: string;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string | null;
 }
 
 export interface Profile {

@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, MessagesSquare, Plus, Settings, Truck } from "lucide-react";
+import { Home, NotebookPen, Plus, Settings, Truck } from "lucide-react";
 
 const tabs = [
   { href: "/", label: "Ana Sayfa", icon: Home },
   { href: "/sevkiyat", label: "Sevkiyat", icon: Truck },
   null,
-  { href: "/gorusmeler", label: "Görüşmeler", icon: MessagesSquare },
+  { href: "/gorusmeler", label: "Görüşmeler", icon: NotebookPen },
   { href: "/ayarlar", label: "Ayarlar", icon: Settings },
 ] as const;
 

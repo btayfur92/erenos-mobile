@@ -26,6 +26,7 @@ create type public.record_status as enum (
 );
 
 create type public.shipment_status as enum ('sevk_bekliyor', 'teslim_edildi');
+create type public.incoming_status as enum ('bekliyor', 'teslim_alindi');
 
 -- ---------------------------------------------------------------------------
 -- Profiller (auth.users ile 1-1)
@@ -147,6 +148,7 @@ create table public.shipments (
   record_id uuid not null references public.records (id) on delete cascade,
   status public.shipment_status not null default 'sevk_bekliyor',
   note text,
+  planned_date date not null default current_date,   -- planlanan sevk tarihi (sevkiyat programı)
   requested_at timestamptz not null default now(),
   delivered_at timestamptz,
   delivered_by uuid references public.profiles (id) on delete set null,
@@ -154,7 +156,7 @@ create table public.shipments (
   created_at timestamptz not null default now()
 );
 
-create index shipments_status_idx on public.shipments (status, requested_at desc);
+create index shipments_status_idx on public.shipments (status, planned_date);
 create index shipments_record_idx on public.shipments (record_id);
 
 create table public.shipment_items (
@@ -165,6 +167,39 @@ create table public.shipment_items (
 );
 
 create index shipment_items_line_idx on public.shipment_items (line_id);
+
+-- Gelecek sevkiyatlar: tedarikçiden bize gelecek ürünler.
+create table public.incoming_shipments (
+  id uuid primary key default gen_random_uuid(),
+  supplier text not null check (length(trim(supplier)) > 0),
+  product_details text not null check (length(trim(product_details)) > 0),
+  quantity numeric(14, 2) check (quantity is null or quantity > 0),  -- belli değilse boş
+  unit text,
+  expected_date date not null default current_date,
+  note text,
+  status public.incoming_status not null default 'bekliyor',
+  received_at timestamptz,
+  received_by uuid references public.profiles (id) on delete set null,
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create index incoming_shipments_status_idx on public.incoming_shipments (status, expected_date);
+
+-- Görüşmeler: çalışanların hastane ziyaret notları. Herkes görür, herkes düzeltebilir.
+create table public.meetings (
+  id uuid primary key default gen_random_uuid(),
+  meeting_date date not null,
+  hospital text not null check (length(trim(hospital)) > 0),
+  department text not null check (length(trim(department)) > 0),
+  note text not null check (length(trim(note)) > 0),
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  updated_by uuid references public.profiles (id) on delete set null,
+  updated_at timestamptz
+);
+
+create index meetings_date_idx on public.meetings (meeting_date desc, created_at desc);
 
 create table public.push_subscriptions (
   id uuid primary key default gen_random_uuid(),
@@ -412,7 +447,7 @@ end;
 $$;
 
 -- Sevkiyat talebi. p_items: [{line_id, quantity}]
-create or replace function public.create_shipment(p_record_id uuid, p_note text, p_items jsonb)
+create or replace function public.create_shipment(p_record_id uuid, p_note text, p_items jsonb, p_planned_date date default null)
 returns uuid
 language plpgsql
 security invoker
@@ -426,7 +461,8 @@ begin
     raise exception 'Sadece onaylanmış kayıtlar sevk edilebilir.';
   end if;
 
-  insert into shipments (record_id, note) values (p_record_id, nullif(trim(p_note), ''))
+  insert into shipments (record_id, note, planned_date)
+  values (p_record_id, nullif(trim(p_note), ''), coalesce(p_planned_date, current_date))
   returning id into v_id;
 
   for v_item in select * from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) loop
@@ -459,6 +495,8 @@ alter table public.record_lines enable row level security;
 alter table public.call_logs enable row level security;
 alter table public.shipments enable row level security;
 alter table public.shipment_items enable row level security;
+alter table public.incoming_shipments enable row level security;
+alter table public.meetings enable row level security;
 alter table public.push_subscriptions enable row level security;
 
 create policy "profiles_read" on public.profiles
@@ -475,6 +513,10 @@ create policy "call_logs_all" on public.call_logs
 create policy "shipments_all" on public.shipments
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 create policy "shipment_items_all" on public.shipment_items
+  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+create policy "incoming_shipments_all" on public.incoming_shipments
+  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+create policy "meetings_all" on public.meetings
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 
 -- Push aboneliği: herkes yalnızca kendi aboneliğini görür/yönetir.

@@ -4,14 +4,23 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { CheckCircle2, Loader2, PackageCheck, Truck, X } from "lucide-react";
 import { cancelShipment, markDelivered } from "@/app/(app)/actions";
-import { formatDateTime, formatQty } from "@/lib/format";
+import { formatDate, formatDateTime, formatQty, todayIstanbul } from "@/lib/format";
 import type { Shipment } from "@/lib/types";
 
-export function ShipmentCard({ shipment, showRecord, names }: { shipment: Shipment; showRecord?: boolean; names?: Record<string, string> }) {
+export function ShipmentCard({
+  shipment,
+  showRecord,
+  names,
+}: {
+  shipment: Shipment;
+  showRecord?: boolean;
+  names?: Record<string, string>;
+}) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [confirmCancel, setConfirmCancel] = useState(false);
   const delivered = shipment.status === "teslim_edildi";
+  const late = !delivered && shipment.planned_date < todayIstanbul();
 
   const act = (fn: () => ReturnType<typeof markDelivered>) =>
     start(async () => {
@@ -37,13 +46,20 @@ export function ShipmentCard({ shipment, showRecord, names }: { shipment: Shipme
             <b className="block text-[15px] font-semibold">{delivered ? "Teslim edildi" : "Sevk bekliyor"}</b>
           )}
           <p className="text-[12px] text-muted">
-            {showRecord && shipment.records?.file_no ? `${shipment.records.file_no} · ` : ""}
-            Talep: {formatDateTime(shipment.requested_at)}
+            <b className={`font-semibold ${late ? "text-accent-600" : "text-ink/80"}`}>
+              Sevk: {formatDate(shipment.planned_date)}
+              {late ? " · gecikti" : ""}
+            </b>
+            {showRecord && shipment.records?.file_no ? ` · ${shipment.records.file_no}` : ""}
             {shipment.created_by && names?.[shipment.created_by] ? ` · ${names[shipment.created_by]}` : ""}
           </p>
         </div>
         {!delivered && !confirmCancel && (
-          <button onClick={() => setConfirmCancel(true)} className="-mr-1 -mt-1 grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-canvas" aria-label="Sevkiyatı iptal et">
+          <button
+            onClick={() => setConfirmCancel(true)}
+            className="-mr-1 -mt-1 grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-canvas"
+            aria-label="Sevkiyatı iptal et"
+          >
             <X size={16} />
           </button>
         )}
@@ -84,4 +100,3 @@ export function ShipmentCard({ shipment, showRecord, names }: { shipment: Shipme
     </div>
   );
 }
-

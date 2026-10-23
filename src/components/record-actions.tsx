@@ -12,7 +12,7 @@ import {
   type ActionResult,
 } from "@/app/(app)/actions";
 import { Sheet } from "./sheet";
-import { formatMoney, formatPhone, formatQty } from "@/lib/format";
+import { formatMoney, formatPhone, formatQty, todayIstanbul } from "@/lib/format";
 import { telHref } from "@/lib/phone";
 import type { LineProgress, RecordLine, SalesRecord } from "@/lib/types";
 
@@ -305,6 +305,7 @@ function ShipmentSheet({
   const shippable = lines.filter((l) => l.approved && Number(progress[l.id]?.remaining ?? 0) > 0);
   const [qty, setQty] = useState<Record<string, string>>({});
   const [note, setNote] = useState("");
+  const [planned, setPlanned] = useState(todayIstanbul());
 
   function submit() {
     const items = shippable
@@ -314,7 +315,7 @@ function ShipmentSheet({
     for (const i of items) {
       if (i.quantity > Number(progress[i.line_id].remaining)) return setError("Girilen miktar kalan onaylı miktardan fazla olamaz.");
     }
-    run(() => createShipment(record.id, note, items), () => (setQty({}), setNote(""), onClose()));
+    run(() => createShipment(record.id, note, items, planned), () => (setQty({}), setNote(""), onClose()));
   }
 
   return (
@@ -349,6 +350,12 @@ function ShipmentSheet({
             </div>
           );
         })}
+        <div>
+          <label className="field-label" htmlFor="planned_date">
+            Sevk tarihi
+          </label>
+          <input id="planned_date" type="date" value={planned} onChange={(e) => setPlanned(e.target.value)} className="input" />
+        </div>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="input resize-none" placeholder="Sevkiyat notu (isteğe bağlı)" />
         <ErrorText error={error} />
         <button className="btn-primary w-full" disabled={pending} onClick={submit}>

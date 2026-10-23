@@ -11,7 +11,7 @@ import { RejectedList } from "@/components/rejected-list";
 import type { SalesRecord } from "@/lib/types";
 
 const FILTERS = [
-  { key: "gundem", label: "Gündem" },
+  { key: "gundem", label: "Gündemdekiler" },
   { key: "dt", label: "Doğrudan Temin" },
   { key: "ym", label: "Yaklaşık Maliyet" },
   { key: "arama", label: "Arama bekleyen" },
