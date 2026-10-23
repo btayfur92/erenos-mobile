@@ -7,7 +7,7 @@ import type { RecordLine, SalesRecord } from "@/lib/types";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
-type Row = RecordLine & { records: Pick<SalesRecord, "id" | "hospital" | "file_no" | "record_date" | "status"> };
+type Row = RecordLine & { records: Pick<SalesRecord, "id" | "hospital" | "file_no" | "record_date" | "status" | "created_at"> };
 
 /**
  * Reddedilen doğrudan teminlerin kalemleri ve onaylanan teminlerde onaylanmayan kalemler:
@@ -17,10 +17,11 @@ type Row = RecordLine & { records: Pick<SalesRecord, "id" | "hospital" | "file_n
 export async function RejectedList({ supabase, term }: { supabase: SupabaseClient; term: string }) {
   let query = supabase
     .from("record_lines")
-    .select("*, records!inner(id, hospital, file_no, record_date, status, type)")
+    .select("*, records!inner(id, hospital, file_no, record_date, status, type, created_at)")
     .eq("records.type", "dogrudan_temin")
     .eq("approved", false)
     .in("records.status", ["reddedildi", "onaylandi"])
+    .order("created_at", { ascending: false })
     .limit(300);
   if (term) query = query.or(`product_name.ilike.%${term}%`);
 
@@ -30,17 +31,21 @@ export async function RejectedList({ supabase, term }: { supabase: SupabaseClien
     // Hastane adına göre de ara
     const { data: byHospital } = await supabase
       .from("record_lines")
-      .select("*, records!inner(id, hospital, file_no, record_date, status, type)")
+      .select("*, records!inner(id, hospital, file_no, record_date, status, type, created_at)")
       .eq("records.type", "dogrudan_temin")
       .eq("approved", false)
       .in("records.status", ["reddedildi", "onaylandi"])
       .ilike("records.hospital", `%${term}%`)
+      .order("created_at", { ascending: false })
       .limit(300)
       .returns<Row[]>();
     const seen = new Set(rows.map((r) => r.id));
     rows = [...rows, ...(byHospital ?? []).filter((r) => !seen.has(r.id))];
   }
-  rows.sort((a, b) => b.records.record_date.localeCompare(a.records.record_date));
+  // En yeni tarih en üstte; aynı gündekilerde son girilen önce.
+  rows.sort(
+    (a, b) => b.records.record_date.localeCompare(a.records.record_date) || b.records.created_at.localeCompare(a.records.created_at),
+  );
 
   // Kayıt bazında grupla
   const groups = new Map<string, { rec: Row["records"]; lines: Row[] }>();
