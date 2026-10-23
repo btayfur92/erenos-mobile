@@ -18,3 +18,16 @@ export const PHONE_ERROR = "Telefon numarası geçersiz. Cep (05xx xxx xx xx) ve
 export function telHref(phone: string) {
   return `tel:${phone.replace(/[^\d+]/g, "")}`;
 }
+
+/** Yazarken uyarı: fazla hane hemen, eksik veya hatalı numara alandan çıkınca (final) gösterilir. */
+export function phoneHint(value: string, final: boolean): string {
+  if (!value.trim() || normalizePhone(value)) return "";
+  let d = value.replace(/\D/g, "");
+  if (d.startsWith("0090")) d = "0" + d.slice(4);
+  else if (d.startsWith("90")) d = "0" + d.slice(2);
+  else if (!d.startsWith("0") && !d.startsWith("444")) d = "0" + d;
+  const want = d.startsWith("444") ? 7 : 11;
+  if (d.length > want) return `Fazla hane girildi: numara ${want} hane olmalı, şu an ${d.length}.`;
+  if (!final) return "";
+  return d.length < want ? `Eksik hane: numara ${want} hane olmalı, şu an ${d.length}.` : "Geçerli bir cep veya sabit hat numarası girin.";
+}

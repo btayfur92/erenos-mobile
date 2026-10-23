@@ -6,7 +6,7 @@ import { Loader2, Plus, Trash2 } from "lucide-react";
 import { saveRecord, type LineInput, type RecordInput } from "@/app/(app)/actions";
 import { CURRENCIES, UNITS, type RecordType } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
-import { normalizePhone, PHONE_ERROR } from "@/lib/phone";
+import { normalizePhone, PHONE_ERROR, phoneHint } from "@/lib/phone";
 
 type LineDraft = { key: number; product_name: string; quantity: string; unit: string; unit_price: string; currency: string };
 
@@ -39,6 +39,7 @@ export function RecordForm({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [type, setType] = useState<RecordType>(initial?.type ?? "dogrudan_temin");
+  const [phoneMsg, setPhoneMsg] = useState("");
   const [lines, setLines] = useState<LineDraft[]>(
     initial?.lines?.length
       ? initial.lines.map((l) => ({
@@ -160,12 +161,16 @@ export function RecordForm({
               defaultValue={initial?.contact_phone}
               placeholder="05xx veya 0312 …"
               autoComplete="off"
+              maxLength={20}
+              onChange={(e) => setPhoneMsg(phoneHint(e.target.value, false))}
               onBlur={(e) => {
                 const p = normalizePhone(e.target.value);
                 if (p) e.target.value = p;
+                setPhoneMsg(phoneHint(e.target.value, true));
               }}
               className="input"
             />
+            {phoneMsg && <p className="mt-1 text-[12px] font-medium text-accent-600">{phoneMsg}</p>}
           </div>
           <div>
             <label className="field-label" htmlFor="contact_ext">
