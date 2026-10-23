@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { KeyRound, Loader2, Plus, ShieldCheck, UserCheck, UserX } from "lucide-react";
 import { Sheet } from "@/components/sheet";
+import { CredentialsBox } from "@/components/credentials-box";
 import type { Profile } from "@/lib/types";
 import { normalizeUsername } from "@/lib/config";
 import { createUser, resetPassword, updateUser, type UserActionResult } from "./actions";
@@ -94,20 +95,7 @@ function AddUserSheet({ open, onClose }: { open: boolean; onClose: () => void })
       {created ? (
         <div className="space-y-4">
           <p className="text-sm text-muted">Kullanıcı oluşturuldu. Bu bilgileri kişiyle paylaşın:</p>
-          <div className="space-y-2 rounded-2xl bg-canvas p-4 font-mono text-[15px]">
-            <p>
-              <span className="text-muted">Kullanıcı adı:</span> <b>{created.username}</b>
-            </p>
-            <p>
-              <span className="text-muted">Şifre:</span> <b>{created.password}</b>
-            </p>
-          </div>
-          <button
-            className="btn-secondary w-full"
-            onClick={() => navigator.clipboard?.writeText(`Kullanıcı adı: ${created.username}\nŞifre: ${created.password}`)}
-          >
-            Kopyala
-          </button>
+          <CredentialsBox username={created.username} password={created.password} />
           <button className="btn-primary w-full" onClick={close}>
             Tamam
           </button>
@@ -168,6 +156,7 @@ function AddUserSheet({ open, onClose }: { open: boolean; onClose: () => void })
 function EditUserSheet({ user, self, onClose }: { user: Profile; self: boolean; onClose: () => void }) {
   const { pending, result, run } = useRun();
   const [password, setPassword] = useState("");
+  const [newCred, setNewCred] = useState<{ username: string; password: string } | null>(null);
   const [fullName, setFullName] = useState(user.full_name);
   const [username, setUsername] = useState(user.username);
   const changed = fullName.trim() !== user.full_name || normalizeUsername(username) !== user.username;
@@ -209,10 +198,25 @@ function EditUserSheet({ user, self, onClose }: { user: Profile; self: boolean; 
           <button
             className="btn-primary mt-2 w-full"
             disabled={pending || !password}
-            onClick={() => run(() => resetPassword(user.id, password))}
+            onClick={() => {
+              const pw = password;
+              run(
+                () => resetPassword(user.id, pw),
+                () => {
+                  setNewCred({ username: user.username, password: pw });
+                  setPassword("");
+                },
+              );
+            }}
           >
             <KeyRound size={17} /> Şifreyi değiştir
           </button>
+          {newCred && (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm text-muted">Yeni giriş bilgilerini kişiyle paylaşın:</p>
+              <CredentialsBox username={newCred.username} password={newCred.password} />
+            </div>
+          )}
         </div>
         {!self && (
           <div className="grid grid-cols-2 gap-2">
