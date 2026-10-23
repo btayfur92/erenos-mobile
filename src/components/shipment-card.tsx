@@ -33,7 +33,7 @@ export function ShipmentCard({
     <div className={`card p-4 ${delivered ? "opacity-90" : ""}`}>
       <div className="flex items-start gap-3">
         <span
-          className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${delivered ? "bg-emerald-50 text-emerald-600" : "bg-brand-50 text-brand-600"}`}
+          className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${delivered ? "bg-emerald-50 text-emerald-600" : "bg-emerald-50 text-emerald-700"}`}
         >
           {delivered ? <PackageCheck size={20} /> : <Truck size={20} />}
         </span>
@@ -107,7 +107,7 @@ export function KindBadge({ kind }: { kind: "gidecek" | "gelecek" }) {
   return (
     <span
       className={`mb-0.5 inline-block rounded-md px-1.5 py-px text-[11px] font-semibold ${
-        kind === "gidecek" ? "bg-brand-50 text-brand-700" : "bg-amber-50 text-amber-700"
+        kind === "gidecek" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
       }`}
     >
       {kind === "gidecek" ? "Gidecek sevkiyat" : "Gelecek sevkiyat"}
