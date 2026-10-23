@@ -68,16 +68,14 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     <>
       <PageHeader title="Satış Takibi" subtitle={`Merhaba ${firstName}`} />
       <main className="mx-auto max-w-xl px-4 pt-4">
-        {!!waitingCount && f !== "arama" && (
+        {!!waitingCount && (
           <Link
             href="/?f=arama"
-            className="mb-4 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-accent-600 to-accent-500 p-4 text-white shadow-card"
+            scroll={false}
+            className="mb-4 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-accent-600 to-accent-500 px-2.5 py-1.5 text-white shadow-card"
           >
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/20 text-lg font-bold">{waitingCount}</span>
-            <span className="text-[14px] leading-snug">
-              <b className="block text-[15px]">Aranması gereken hastane var</b>
-              Doğrudan teminlerin sonucunu öğrenmek için arayın.
-            </span>
+            <span className="grid h-7 min-w-7 shrink-0 place-items-center rounded-lg bg-white/20 px-1.5 text-[15px] font-bold">{waitingCount}</span>
+            <b className="text-[15px] font-semibold">Aranması gereken hastane var</b>
           </Link>
         )}
 
