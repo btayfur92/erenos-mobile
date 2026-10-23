@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { PackageOpen, Truck } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { ShipmentCard } from "@/components/shipment-card";
@@ -11,9 +10,8 @@ import type { IncomingShipment, Profile, Shipment } from "@/lib/types";
 export const metadata: Metadata = { title: "Sevkiyat" };
 
 /**
- * Sevkiyat programı. Gidecek: onaylanan doğrudan teminlerden hastaneye gidecekler.
- * Gelecek: tedarikçiden bize gelecekler. Bekleyenlerde en yakın tarih üstte, aşağı doğru ileri tarihler;
- * tamamlananlarda en son teslim üstte.
+ * Sevkiyat programı. Gidecek (onaylanan doğrudan teminlerden hastaneye) ve gelecek (tedarikçiden bize)
+ * sevkiyatlar tek listede, tarih sırasıyla: bekleyenlerde en yakın tarih üstte, tamamlananlarda en son teslim üstte.
  */
 export default async function ShipmentsPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
   const { d } = await searchParams;
@@ -56,6 +54,16 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
     supabase.from("profiles").select("id, full_name, username").returns<Pick<Profile, "id" | "full_name" | "username">[]>(),
   ]);
   const names = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name || p.username]));
+  const list = [
+    ...(outgoing ?? []).map((s) => ({
+      at: (done ? s.delivered_at : s.planned_date) ?? "",
+      node: <ShipmentCard key={`s-${s.id}`} shipment={s} names={names} showRecord />,
+    })),
+    ...(incoming ?? []).map((i) => ({
+      at: (done ? i.received_at : i.expected_date) ?? "",
+      node: <IncomingCard key={`i-${i.id}`} item={i} names={names} />,
+    })),
+  ].sort((x, y) => (done ? y.at.localeCompare(x.at) : x.at.localeCompare(y.at)));
 
   return (
     <>
@@ -76,39 +84,21 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
           </Link>
         </div>
 
-        <Section icon={<Truck size={16} />} title="Gidecek sevkiyatlar" count={outgoing?.length ?? 0}>
-          {outgoing?.length ? (
-            outgoing.map((s) => <ShipmentCard key={s.id} shipment={s} names={names} showRecord />)
-          ) : (
-            <Empty text={done ? "Teslim edilen sevkiyat yok." : "Onaylanan doğrudan teminlerden sevkiyata aktarılanlar burada görünür."} />
-          )}
-        </Section>
-
-        <Section icon={<PackageOpen size={16} />} title="Gelecek sevkiyatlar" count={incoming?.length ?? 0}>
-          {incoming?.length ? (
-            incoming.map((i) => <IncomingCard key={i.id} item={i} names={names} />)
+        <div className="mt-5 space-y-3">
+          {list.length ? (
+            list.map((x) => x.node)
           ) : (
             <Empty
-              text={done ? "Teslim alınan sevkiyat yok." : "Tedarikçiden gelecek ürünleri sağ üstteki “Gelecek” düğmesiyle ekleyin."}
+              text={
+                done
+                  ? "Tamamlanan sevkiyat yok."
+                  : "Onaylanan doğrudan teminlerden aktarılan gidecek sevkiyatlar ve sağ üstteki “Gelecek” düğmesiyle eklenen gelecek sevkiyatlar burada tarih sırasıyla görünür."
+              }
             />
           )}
-        </Section>
+        </div>
       </main>
     </>
-  );
-}
-
-function Section({ icon, title, count, children }: { icon: React.ReactNode; title: string; count: number; children: React.ReactNode }) {
-  return (
-    <section className="mt-6">
-      <h2 className="mb-2 flex items-center gap-1.5 px-1 text-[13px] font-bold uppercase tracking-wider text-muted">
-        {icon} {title}
-        <span className="ml-auto rounded-full bg-white px-2 py-0.5 text-[12px] font-semibold normal-case tracking-normal text-ink/70 ring-1 ring-line">
-          {count}
-        </span>
-      </h2>
-      <div className="space-y-3">{children}</div>
-    </section>
   );
 }
 

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Building2, Loader2, Pencil, Plus } from "lucide-react";
 import { Sheet } from "@/components/sheet";
 import { saveMeeting } from "@/app/(app)/actions";
-import { formatDate, formatDateTime, todayIstanbul } from "@/lib/format";
+import { formatDateTime, formatDateWithDay, todayIstanbul } from "@/lib/format";
 import type { Meeting } from "@/lib/types";
 
 export function MeetingCard({ meeting: m, names }: { meeting: Meeting; names: Record<string, string> }) {
@@ -17,9 +17,8 @@ export function MeetingCard({ meeting: m, names }: { meeting: Meeting; names: Re
         </span>
         <div className="min-w-0 flex-1">
           <b className="block truncate text-[15px] font-semibold">{m.hospital}</b>
-          <p className="text-[12px] text-muted">
-            <b className="font-semibold text-ink/80">{formatDate(m.meeting_date)}</b> · {m.department}
-          </p>
+          <p className="text-[12px] font-semibold text-ink/80">{formatDateWithDay(m.meeting_date)}</p>
+          <p className="text-[12px] text-muted">{m.department}</p>
         </div>
         <button
           onClick={() => setEditing(true)}

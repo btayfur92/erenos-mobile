@@ -30,7 +30,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader title="Görüşmeler" subtitle="Hastane ziyaret notları" action={<MeetingEditor />} />
+      <PageHeader title="Görüşmeler" subtitle="Ziyaret notları" action={<MeetingEditor />} />
       <main className="mx-auto max-w-xl px-4 pt-4">
         <form className="relative" action="">
           <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />

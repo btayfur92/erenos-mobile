@@ -11,8 +11,7 @@ import { normalizePhone, PHONE_ERROR } from "@/lib/phone";
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
 function fail(error: unknown): ActionResult {
-  const message =
-    (error as { message?: string })?.message ?? (typeof error === "string" ? error : "Beklenmeyen bir hata oluştu.");
+  const message = (error as { message?: string })?.message ?? (typeof error === "string" ? error : "Beklenmeyen bir hata oluştu.");
   return { ok: false, error: message };
 }
 
@@ -241,28 +240,49 @@ export interface IncomingInput {
   note: string;
 }
 
+function checkIncoming(input: IncomingInput): string | null {
+  if (!input.supplier.trim()) return "Tedarikçi adı gerekli.";
+  if (!input.product_details.trim()) return "Ürün detayını girin.";
+  if (input.quantity !== null && !(input.quantity > 0)) return "Miktar sıfırdan büyük olmalı ya da boş bırakılmalı.";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.expected_date)) return "Beklenen tarihi seçin.";
+  return null;
+}
+
+const incomingFields = (input: IncomingInput) => ({
+  supplier: input.supplier.trim(),
+  product_details: input.product_details.trim(),
+  quantity: input.quantity,
+  unit: input.quantity !== null ? input.unit : null,
+  expected_date: input.expected_date,
+  note: input.note.trim() || null,
+});
+
 export async function createIncoming(input: IncomingInput): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
-  if (!input.supplier.trim()) return { ok: false, error: "Tedarikçi adı gerekli." };
-  if (!input.product_details.trim()) return { ok: false, error: "Ürün detayını girin." };
-  if (input.quantity !== null && !(input.quantity > 0)) return { ok: false, error: "Miktar sıfırdan büyük olmalı ya da boş bırakılmalı." };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.expected_date)) return { ok: false, error: "Beklenen tarihi seçin." };
-  const { data, error } = await supabase
-    .from("incoming_shipments")
-    .insert({
-      supplier: input.supplier.trim(),
-      product_details: input.product_details.trim(),
-      quantity: input.quantity,
-      unit: input.quantity !== null ? input.unit : null,
-      expected_date: input.expected_date,
-      note: input.note.trim() || null,
-    })
-    .select("id")
-    .single();
+  const invalid = checkIncoming(input);
+  if (invalid) return { ok: false, error: invalid };
+  const { data, error } = await supabase.from("incoming_shipments").insert(incomingFields(input)).select("id").single();
   if (error) return fail(error);
   notify({ title: `Gelecek sevkiyat: ${input.supplier.trim()}`, body: input.product_details.trim(), url: "/sevkiyat" }, user.id);
   refresh();
   return { ok: true, id: data.id };
+}
+
+/** Yanlış girilen gelecek sevkiyatı düzeltir; teslim alınmış olanlar değişmez. Bildirim gönderilmez. */
+export async function updateIncoming(id: string, input: IncomingInput): Promise<ActionResult> {
+  const { supabase } = await requireUser();
+  const invalid = checkIncoming(input);
+  if (invalid) return { ok: false, error: invalid };
+  const { data, error } = await supabase
+    .from("incoming_shipments")
+    .update(incomingFields(input))
+    .eq("id", id)
+    .eq("status", "bekliyor")
+    .select("id");
+  if (error) return fail(error);
+  if (!data?.length) return { ok: false, error: "Bu sevkiyat teslim alınmış ya da silinmiş." };
+  refresh();
+  return { ok: true, id };
 }
 
 export async function markReceived(id: string): Promise<ActionResult> {
@@ -331,4 +351,3 @@ export async function saveMeeting(input: MeetingInput): Promise<ActionResult> {
   refresh();
   return { ok: true, id: data.id };
 }
-

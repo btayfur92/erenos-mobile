@@ -7,13 +7,18 @@ export function formatQty(n: number | string | null | undefined) {
 }
 
 export function formatMoney(n: number | string, currency: string) {
-  const v = new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(
-    Number(n),
-  );
+  const v = new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(Number(n));
   return `${v} ${CURRENCY_SYMBOL[currency] ?? currency}`;
 }
 
 /** "2026-10-20" gibi tarih alanları için (saat dilimi kaydırması olmadan). */
+/** "24 Ekim 2026 Cumartesi" */
+export function formatDateWithDay(date: string) {
+  const [y, m, d] = date.slice(0, 10).split("-").map(Number);
+  const weekday = new Intl.DateTimeFormat("tr-TR", { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
+  return `${formatDate(date)} ${weekday}`;
+}
+
 export function formatDate(date: string) {
   const [y, m, d] = date.slice(0, 10).split("-").map(Number);
   return new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(
@@ -58,4 +63,3 @@ export function singleTotal(lines: { quantity: number; unit_price: number; curre
   const tl = lines.reduce((sum, l) => sum + Number(l.quantity) * Number(l.unit_price) * rates[l.currency], 0);
   return `≈ ${formatMoney(Math.round(tl * 100) / 100, "TRY")}`;
 }
-

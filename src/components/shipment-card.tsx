@@ -38,6 +38,7 @@ export function ShipmentCard({
           {delivered ? <PackageCheck size={20} /> : <Truck size={20} />}
         </span>
         <div className="min-w-0 flex-1">
+          {showRecord && <KindBadge kind="gidecek" />}
           {showRecord && shipment.records ? (
             <Link href={`/kayit/${shipment.records.id}`} className="block truncate text-[15px] font-semibold hover:text-brand-600">
               {shipment.records.hospital}
@@ -98,5 +99,18 @@ export function ShipmentCard({
       )}
       {error && <p className="mt-2 text-sm font-medium text-accent-700">{error}</p>}
     </div>
+  );
+}
+
+/** Kartın gidecek mi gelecek mi olduğunu gösteren küçük etiket (sevkiyat listesi karışık sıralı). */
+export function KindBadge({ kind }: { kind: "gidecek" | "gelecek" }) {
+  return (
+    <span
+      className={`mb-0.5 inline-block rounded-md px-1.5 py-px text-[11px] font-semibold ${
+        kind === "gidecek" ? "bg-brand-50 text-brand-700" : "bg-amber-50 text-amber-700"
+      }`}
+    >
+      {kind === "gidecek" ? "Gidecek sevkiyat" : "Gelecek sevkiyat"}
+    </span>
   );
 }

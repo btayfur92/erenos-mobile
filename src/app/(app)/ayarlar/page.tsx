@@ -19,7 +19,7 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Ayarlar" />
+      <PageHeader title="Ayarlar" subtitle={profile.full_name || profile.username} />
       <main className="mx-auto max-w-xl space-y-4 px-4 pt-4">
         <div className="card flex items-center gap-4 p-4">
           <span className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 text-lg font-semibold text-white">

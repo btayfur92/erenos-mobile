@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CheckCircle2, Loader2, PackageCheck, PackageOpen, X } from "lucide-react";
+import { CheckCircle2, Loader2, PackageCheck, PackageOpen, Pencil, X } from "lucide-react";
 import { cancelIncoming, markReceived } from "@/app/(app)/actions";
+import { IncomingSheet } from "@/components/add-incoming";
+import { KindBadge } from "@/components/shipment-card";
 import { formatDate, formatDateTime, formatQty, todayIstanbul } from "@/lib/format";
 import type { IncomingShipment } from "@/lib/types";
 
@@ -11,6 +13,7 @@ export function IncomingCard({ item, names }: { item: IncomingShipment; names?: 
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [editing, setEditing] = useState(false);
   const received = item.status === "teslim_alindi";
   const late = !received && item.expected_date < todayIstanbul();
 
@@ -30,6 +33,7 @@ export function IncomingCard({ item, names }: { item: IncomingShipment; names?: 
           {received ? <PackageCheck size={20} /> : <PackageOpen size={20} />}
         </span>
         <div className="min-w-0 flex-1">
+          <KindBadge kind="gelecek" />
           <b className="block truncate text-[15px] font-semibold">{item.supplier}</b>
           <p className="text-[12px] text-muted">
             <b className={`font-semibold ${late ? "text-accent-600" : "text-ink/80"}`}>
@@ -40,13 +44,22 @@ export function IncomingCard({ item, names }: { item: IncomingShipment; names?: 
           </p>
         </div>
         {!received && !confirmCancel && (
-          <button
-            onClick={() => setConfirmCancel(true)}
-            className="-mr-1 -mt-1 grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-canvas"
-            aria-label="Gelecek sevkiyatı sil"
-          >
-            <X size={16} />
-          </button>
+          <div className="-mr-1 -mt-1 flex">
+            <button
+              onClick={() => setEditing(true)}
+              className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-canvas"
+              aria-label="Gelecek sevkiyatı düzenle"
+            >
+              <Pencil size={15} />
+            </button>
+            <button
+              onClick={() => setConfirmCancel(true)}
+              className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-canvas"
+              aria-label="Gelecek sevkiyatı sil"
+            >
+              <X size={16} />
+            </button>
+          </div>
         )}
       </div>
 
@@ -80,6 +93,7 @@ export function IncomingCard({ item, names }: { item: IncomingShipment; names?: 
         </button>
       )}
       {error && <p className="mt-2 text-sm font-medium text-accent-700">{error}</p>}
+      {!received && <IncomingSheet open={editing} onClose={() => setEditing(false)} item={item} />}
     </div>
   );
 }
