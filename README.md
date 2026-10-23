@@ -89,7 +89,7 @@ curl -H "Authorization: Bearer <CRON_SECRET>" "https://<site>/mobiluygulama/api/
 | **Sonucu düzenle** | Sonuçlanmış doğrudan temin yeniden düzenlenebilir; onaylanan miktar sevkiyata aktarılanın altına inemez, sevkiyatı olan kayıt reddedilemez |
 | Yaklaşık maliyet | Yalnızca takip amaçlı: *Onaylandı* veya *Reddedildi* olarak işaretlenir (gerekirse geri alınır) |
 | Ana ekran | **Gündem** sekmesinde yalnızca sonuçlanmamış doğrudan teminler görünür; yaklaşık maliyetler Gündem'e girmez, Yaklaşık Maliyet sekmesinin **Bekleyenler** bölümünde onaylanır veya reddedilir; sonuçlananlar kendi tipinin sekmesinde (Doğrudan Temin / Yaklaşık Maliyet) altında **Onaylananlar** ve **Reddedilenler** sekmelerinde kalır |
-| Yeni kayıt | Kaydedince liste ekranına dönülür: doğrudan temin Gündem'e, yaklaşık maliyet kendi sekmesinin Bekleyenler bölümüne. Telefon cep veya sabit hat olabilir, isteğe bağlı **Dahili** alanı vardır; arama bağlantısı dahiliyi otomatik tuşlar |
+| Yeni kayıt | Kaydedince liste ekranına dönülür: doğrudan temin Gündem'e, yaklaşık maliyet kendi sekmesinin Bekleyenler bölümüne. Telefon geçerli bir Türkiye numarası olmalıdır (cep, sabit hat, 0850 veya 444) ve `0xxx xxx xx xx` biçiminde saklanır. İsteğe bağlı **Dahili** alanı yalnızca bilgi olarak gösterilir; arama düğmesi sadece numarayı arar |
 | Kart toplamı | Listede her kartta tek toplam görünür; farklı para birimleri TCMB günlük döviz satış kuruyla TL'ye çevrilip ≈ ile yazılır (kur alınamazsa birimlere göre ayrı). Kayıt detayında ayrıntı birim bazında kalır |
 | Kullanıcılar | Yönetici ad, kullanıcı adı ve şifreyi değiştirebilir, başka kullanıcıyı aynı yetkilerle yönetici yapabilir veya pasife alabilir |
 

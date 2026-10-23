@@ -6,6 +6,7 @@ import { Loader2, Plus, Trash2 } from "lucide-react";
 import { saveRecord, type LineInput, type RecordInput } from "@/app/(app)/actions";
 import { CURRENCIES, UNITS, type RecordType } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
+import { normalizePhone, PHONE_ERROR } from "@/lib/phone";
 
 type LineDraft = { key: number; product_name: string; quantity: string; unit: string; unit_price: string; currency: string };
 
@@ -77,6 +78,10 @@ export function RecordForm({
           currency: l.currency,
         })),
     };
+    if (input.contact_phone.trim() && !normalizePhone(input.contact_phone)) {
+      setError(PHONE_ERROR);
+      return;
+    }
     if (input.lines.some((l) => Number.isNaN(l.quantity) || Number.isNaN(l.unit_price))) {
       setError("Miktar ve fiyat alanlarına geçerli sayı girin.");
       return;
@@ -153,7 +158,12 @@ export function RecordForm({
               type="tel"
               inputMode="tel"
               defaultValue={initial?.contact_phone}
-              placeholder="Cep veya sabit hat"
+              placeholder="05xx veya 0312 …"
+              autoComplete="off"
+              onBlur={(e) => {
+                const p = normalizePhone(e.target.value);
+                if (p) e.target.value = p;
+              }}
               className="input"
             />
           </div>
@@ -161,7 +171,16 @@ export function RecordForm({
             <label className="field-label" htmlFor="contact_ext">
               Dahili
             </label>
-            <input id="contact_ext" name="contact_ext" inputMode="numeric" defaultValue={initial?.contact_ext} placeholder="Varsa" className="input" />
+            <input
+              id="contact_ext"
+              name="contact_ext"
+              inputMode="numeric"
+              maxLength={6}
+              defaultValue={initial?.contact_ext}
+              placeholder="Varsa"
+              onChange={(e) => (e.target.value = e.target.value.replace(/\D/g, ""))}
+              className="input"
+            />
           </div>
         </div>
       </section>

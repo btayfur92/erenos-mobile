@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { sendToAll, type PushPayload } from "@/lib/push";
 import { RECORD_TYPE_LABEL, type RecordType } from "@/lib/types";
 import { formatQty } from "@/lib/format";
+import { normalizePhone, PHONE_ERROR } from "@/lib/phone";
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
@@ -58,6 +59,10 @@ export async function saveRecord(input: RecordInput): Promise<ActionResult> {
   if (!lines.length) return { ok: false, error: "En az bir ürün kalemi girin." };
   if (lines.some((l) => !(Number(l.quantity) > 0))) return { ok: false, error: "Ürün miktarları sıfırdan büyük olmalı." };
   if (lines.some((l) => !(Number(l.unit_price) >= 0))) return { ok: false, error: "Fiyatları kontrol edin." };
+  const phone = input.contact_phone.trim() ? normalizePhone(input.contact_phone) : "";
+  if (phone === null) return { ok: false, error: PHONE_ERROR };
+  const ext = input.contact_ext.trim();
+  if (ext && !/^\d{1,6}$/.test(ext)) return { ok: false, error: "Dahili yalnızca rakamlardan oluşmalı." };
 
   const { data, error } = await supabase.rpc("save_record", {
     p_id: input.id ?? null,
@@ -66,8 +71,8 @@ export async function saveRecord(input: RecordInput): Promise<ActionResult> {
     p_file_no: input.file_no,
     p_hospital: input.hospital,
     p_contact_name: input.contact_name,
-    p_contact_phone: input.contact_phone,
-    p_contact_ext: input.contact_ext,
+    p_contact_phone: phone,
+    p_contact_ext: ext,
     p_notes: input.notes,
     p_lines: lines,
   });

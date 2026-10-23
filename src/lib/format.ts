@@ -41,13 +41,6 @@ export function formatPhone(phone: string, ext?: string | null) {
   return ext ? `${phone} · Dahili ${ext}` : phone;
 }
 
-/** Arama bağlantısı. Dahili varsa virgülle eklenir; telefon bağlanınca dahiliyi kendisi tuşlar. */
-export function telHref(phone: string, ext?: string | null) {
-  const digits = phone.replace(/[^\d+]/g, "");
-  const e = ext?.replace(/\D/g, "");
-  return `tel:${digits}${e ? `,${e}` : ""}`;
-}
-
 /** Kalemlerin toplamını para birimine göre gruplar. */
 export function totalsByCurrency(lines: { quantity: number; unit_price: number; currency: string }[]) {
   const totals = new Map<string, number>();
