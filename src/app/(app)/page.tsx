@@ -2,9 +2,11 @@ import Link from "next/link";
 import { CheckCircle2, Clock, FileText, Search, XCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
+import { getRates } from "@/lib/fx";
 import { PageHeader } from "@/components/page-header";
 import { RecordCard } from "@/components/record-card";
 import { EmptyState } from "@/components/empty-state";
+import { ChipStrip } from "@/components/chip-strip";
 import type { SalesRecord } from "@/lib/types";
 
 const FILTERS = [
@@ -49,10 +51,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     query.returns<SalesRecord[]>(),
     supabase.from("records").select("id", { count: "exact", head: true }).eq("status", "arama_bekliyor"),
   ]);
-  const progress = await fetchProgress(
-    supabase,
-    (records ?? []).filter((r) => r.status === "onaylandi").map((r) => r.id),
-  );
+  const [progress, rates] = await Promise.all([
+    fetchProgress(
+      supabase,
+      (records ?? []).filter((r) => r.status === "onaylandi").map((r) => r.id),
+    ),
+    getRates(),
+  ]);
 
   const firstName = (profile.full_name || profile.username).split(" ")[0];
 
@@ -80,7 +85,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           <input name="q" defaultValue={q} placeholder="Hastane, dosya no veya ürün ara" className="input pl-10" type="search" enterKeyHint="search" />
         </form>
 
-        <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+        <ChipStrip>
           {FILTERS.map((x) => {
             const params = new URLSearchParams();
             if (x.key !== "gundem") params.set("f", x.key);
@@ -90,6 +95,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               <Link
                 key={x.key}
                 href={`/${params.size ? `?${params}` : ""}`}
+                scroll={false}
+                aria-current={active ? "page" : undefined}
                 className={`chip ${active ? "bg-brand-600 text-white shadow-sm" : "bg-white text-ink/80 ring-1 ring-line"}`}
               >
                 {x.label}
@@ -101,7 +108,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               </Link>
             );
           })}
-        </div>
+        </ChipStrip>
 
         {(f === "dt" || f === "ym") && (
           <div className={`mt-3 grid gap-1 rounded-2xl bg-white p-1 ring-1 ring-line ${f === "ym" ? "grid-cols-3" : "grid-cols-2"}`}>
@@ -130,7 +137,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
         <div className="mt-4 space-y-3">
           {records?.length ? (
-            records.map((r) => <RecordCard key={r.id} record={r} progress={progress} />)
+            records.map((r) => <RecordCard key={r.id} record={r} progress={progress} rates={rates} />)
           ) : (
             <EmptyState
               icon={<FileText size={26} />}

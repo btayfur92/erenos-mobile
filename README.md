@@ -89,6 +89,7 @@ curl -H "Authorization: Bearer <CRON_SECRET>" "https://<site>/mobiluygulama/api/
 | **Sonucu düzenle** | Sonuçlanmış doğrudan temin yeniden düzenlenebilir; onaylanan miktar sevkiyata aktarılanın altına inemez, sevkiyatı olan kayıt reddedilemez |
 | Yaklaşık maliyet | Yalnızca takip amaçlı: *Onaylandı* veya *Reddedildi* olarak işaretlenir (gerekirse geri alınır) |
 | Ana ekran | **Gündem** sekmesinde yalnızca sonuçlanmamış doğrudan teminler görünür; yaklaşık maliyetler Gündem'e girmez, Yaklaşık Maliyet sekmesinin **Bekleyenler** bölümünde onaylanır veya reddedilir; sonuçlananlar kendi tipinin sekmesinde (Doğrudan Temin / Yaklaşık Maliyet) altında **Onaylananlar** ve **Reddedilenler** sekmelerinde kalır |
+| Kart toplamı | Listede her kartta tek toplam görünür; farklı para birimleri TCMB günlük döviz satış kuruyla TL'ye çevrilip ≈ ile yazılır (kur alınamazsa birimlere göre ayrı). Kayıt detayında ayrıntı birim bazında kalır |
 | Kullanıcılar | Yönetici ad, kullanıcı adı ve şifreyi değiştirebilir, başka kullanıcıyı aynı yetkilerle yönetici yapabilir veya pasife alabilir |
 
 Bildirimler, işlemi yapan kişi hariç herkese gider (`src/app/(app)/actions.ts` içindeki `notify`). Arama hatırlatmaları herkese gider.

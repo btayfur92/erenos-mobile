@@ -1,11 +1,19 @@
 import Link from "next/link";
 import { ChevronRight, Phone } from "lucide-react";
-import { formatDate, formatQty, totalsByCurrency } from "@/lib/format";
+import { formatDate, formatQty, singleTotal } from "@/lib/format";
 import type { LineProgress, SalesRecord } from "@/lib/types";
 import { StatusBadge, TypeBadge } from "./status-badge";
 import { ProgressBar } from "./line-progress";
 
-export function RecordCard({ record, progress }: { record: SalesRecord; progress: Map<string, LineProgress> }) {
+export function RecordCard({
+  record,
+  progress,
+  rates,
+}: {
+  record: SalesRecord;
+  progress: Map<string, LineProgress>;
+  rates: Record<string, number> | null;
+}) {
   const lines = [...(record.record_lines ?? [])].sort((a, b) => a.sort_order - b.sort_order);
   const approvedLines = lines.filter((l) => l.approved);
   const isApproved = record.status === "onaylandi" && record.type === "dogrudan_temin";
@@ -66,7 +74,7 @@ export function RecordCard({ record, progress }: { record: SalesRecord; progress
         <StatusBadge status={record.status} label={fullyDelivered ? "Tamamı teslim edildi" : undefined} />
         <span className="flex items-center gap-1 text-[13px] font-semibold tabular-nums text-ink/80">
           {record.status === "arama_bekliyor" && record.contact_phone && <Phone size={13} className="text-accent-600" />}
-          {totalsByCurrency(isApproved ? approvedLines.map((l) => ({ ...l, quantity: l.approved_qty ?? 0 })) : lines)}
+          {singleTotal(isApproved ? approvedLines.map((l) => ({ ...l, quantity: l.approved_qty ?? 0 })) : lines, rates)}
         </span>
       </div>
     </Link>

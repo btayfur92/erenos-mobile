@@ -42,3 +42,15 @@ export function totalsByCurrency(lines: { quantity: number; unit_price: number; 
   for (const l of lines) totals.set(l.currency, (totals.get(l.currency) ?? 0) + Number(l.quantity) * Number(l.unit_price));
   return [...totals.entries()].map(([currency, total]) => formatMoney(total, currency)).join(" + ");
 }
+
+/**
+ * Kalemlerin tek bir toplamı. Tek para birimi varsa o birimde, birden fazla varsa
+ * kurla TL'ye çevrilmiş yaklaşık toplam (≈) gösterilir. Kur yoksa birimlere göre ayrı yazılır.
+ */
+export function singleTotal(lines: { quantity: number; unit_price: number; currency: string }[], rates: Record<string, number> | null) {
+  const currencies = new Set(lines.map((l) => l.currency));
+  if (currencies.size <= 1 || !rates || [...currencies].some((c) => !rates[c])) return totalsByCurrency(lines);
+  const tl = lines.reduce((sum, l) => sum + Number(l.quantity) * Number(l.unit_price) * rates[l.currency], 0);
+  return `≈ ${formatMoney(Math.round(tl * 100) / 100, "TRY")}`;
+}
+
