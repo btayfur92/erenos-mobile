@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { ArrowRight, MessageSquareText, Pencil, Phone, User } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
-import { formatDate, formatDateTime, formatMoney, formatPhone, formatQty, totalsByCurrency } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney, formatPhone, formatQty, singleTotal } from "@/lib/format";
+import { getRates } from "@/lib/fx";
 import { telHref } from "@/lib/phone";
 import { RECORD_TYPE_LABEL, type CallLog, type LineProgress, type Profile, type SalesRecord, type Shipment } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
@@ -31,7 +32,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
   const { data: record } = await supabase.from("records").select("*, record_lines(*)").eq("id", id).single<SalesRecord>();
   if (!record) notFound();
 
-  const [{ data: calls }, { data: shipments }, { data: profiles }, progressMap, linked] = await Promise.all([
+  const [{ data: calls }, { data: shipments }, { data: profiles }, progressMap, linked, rates] = await Promise.all([
     supabase.from("call_logs").select("*").eq("record_id", id).order("created_at", { ascending: false }).returns<CallLog[]>(),
     supabase
       .from("shipments")
@@ -47,6 +48,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
           .select("id, type, record_date")
           .in("id", [record.source_record_id, record.converted_record_id].filter(Boolean) as string[])
       : Promise.resolve({ data: [] as { id: string; type: string; record_date: string }[] }),
+    getRates(),
   ]);
 
   const names = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name || p.username]));
@@ -84,7 +86,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
             <p className="mt-0.5 text-[14px] text-white/75">{record.file_no ? `Dosya / ihale no: ${record.file_no}` : "Dosya no girilmedi"}</p>
             <p className="mt-4 text-[13px] text-white/70">{approvedDt ? "Onaylanan toplam" : "Toplam teklif"}</p>
             <p className="text-2xl font-semibold tabular-nums tracking-tight">
-              {totalsByCurrency(approvedDt ? lines.filter((l) => l.approved).map((l) => ({ ...l, quantity: Number(l.approved_qty ?? 0) })) : lines)}
+              {singleTotal(approvedDt ? lines.filter((l) => l.approved).map((l) => ({ ...l, quantity: Number(l.approved_qty ?? 0) })) : lines, rates)}
             </p>
           </div>
           <div className="space-y-3 p-4">
