@@ -31,6 +31,7 @@ export interface SalesRecord {
   hospital: string;
   contact_name: string | null;
   contact_phone: string | null;
+  contact_ext: string | null;
   notes: string | null;
   source_record_id: string | null;
   converted_record_id: string | null;

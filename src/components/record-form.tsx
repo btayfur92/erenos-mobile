@@ -65,6 +65,7 @@ export function RecordForm({
       hospital: String(fd.get("hospital") ?? ""),
       contact_name: String(fd.get("contact_name") ?? ""),
       contact_phone: String(fd.get("contact_phone") ?? ""),
+      contact_ext: String(fd.get("contact_ext") ?? ""),
       notes: String(fd.get("notes") ?? ""),
       lines: lines
         .filter((l) => l.product_name.trim())
@@ -84,7 +85,9 @@ export function RecordForm({
     start(async () => {
       const res = await saveRecord(input);
       if (!res.ok) return setError(res.error);
-      router.replace(`/kayit/${res.id}`);
+      // Yeni kayıttan sonra listeye dön: doğrudan temin Gündem'e, yaklaşık maliyet kendi sekmesine düşer.
+      if (initial?.id) router.replace(`/kayit/${res.id}`);
+      else router.replace(type === "yaklasik_maliyet" ? "/?f=ym" : "/");
     });
   }
 
@@ -133,18 +136,32 @@ export function RecordForm({
           </label>
           <input id="hospital" name="hospital" required defaultValue={initial?.hospital} className="input" placeholder="Hastane adı" />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="field-label" htmlFor="contact_name">
-              İlgili kişi <span className="font-normal text-muted/70">(varsa)</span>
-            </label>
-            <input id="contact_name" name="contact_name" defaultValue={initial?.contact_name} className="input" />
-          </div>
+        <div>
+          <label className="field-label" htmlFor="contact_name">
+            İlgili kişi <span className="font-normal text-muted/70">(varsa)</span>
+          </label>
+          <input id="contact_name" name="contact_name" defaultValue={initial?.contact_name} className="input" />
+        </div>
+        <div className="grid grid-cols-[1fr_7rem] gap-3">
           <div>
             <label className="field-label" htmlFor="contact_phone">
               Telefon <span className="font-normal text-muted/70">(varsa)</span>
             </label>
-            <input id="contact_phone" name="contact_phone" type="tel" inputMode="tel" defaultValue={initial?.contact_phone} className="input" />
+            <input
+              id="contact_phone"
+              name="contact_phone"
+              type="tel"
+              inputMode="tel"
+              defaultValue={initial?.contact_phone}
+              placeholder="Cep veya sabit hat"
+              className="input"
+            />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="contact_ext">
+              Dahili
+            </label>
+            <input id="contact_ext" name="contact_ext" inputMode="numeric" defaultValue={initial?.contact_ext} placeholder="Varsa" className="input" />
           </div>
         </div>
       </section>

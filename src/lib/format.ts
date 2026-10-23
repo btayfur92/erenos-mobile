@@ -36,6 +36,18 @@ export function todayIstanbul() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(new Date());
 }
 
+/** Telefonu dahili ile birlikte yazar: "0312 552 60 00 · Dahili 123". */
+export function formatPhone(phone: string, ext?: string | null) {
+  return ext ? `${phone} · Dahili ${ext}` : phone;
+}
+
+/** Arama bağlantısı. Dahili varsa virgülle eklenir; telefon bağlanınca dahiliyi kendisi tuşlar. */
+export function telHref(phone: string, ext?: string | null) {
+  const digits = phone.replace(/[^\d+]/g, "");
+  const e = ext?.replace(/\D/g, "");
+  return `tel:${digits}${e ? `,${e}` : ""}`;
+}
+
 /** Kalemlerin toplamını para birimine göre gruplar. */
 export function totalsByCurrency(lines: { quantity: number; unit_price: number; currency: string }[]) {
   const totals = new Map<string, number>();

@@ -25,6 +25,7 @@ export default async function EditRecordPage({ params }: { params: Promise<{ id:
             hospital: r.hospital,
             contact_name: r.contact_name ?? "",
             contact_phone: r.contact_phone ?? "",
+            contact_ext: r.contact_ext ?? "",
             notes: r.notes ?? "",
             lines: lines.map((l) => ({
               product_name: l.product_name,

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowRight, MessageSquareText, Pencil, Phone, User } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
-import { formatDate, formatDateTime, formatMoney, formatQty, totalsByCurrency } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney, formatPhone, formatQty, telHref, totalsByCurrency } from "@/lib/format";
 import { RECORD_TYPE_LABEL, type CallLog, type LineProgress, type Profile, type SalesRecord, type Shipment } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
@@ -98,10 +98,10 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[14px] font-semibold">{record.contact_name || "İlgili kişi"}</p>
-                  {record.contact_phone && <p className="text-[13px] text-muted">{record.contact_phone}</p>}
+                  {record.contact_phone && <p className="text-[13px] text-muted">{formatPhone(record.contact_phone, record.contact_ext)}</p>}
                 </div>
                 {record.contact_phone && (
-                  <a href={`tel:${record.contact_phone}`} className="grid h-10 w-10 place-items-center rounded-full bg-brand-600 text-white" aria-label="Ara">
+                  <a href={telHref(record.contact_phone, record.contact_ext)} className="grid h-10 w-10 place-items-center rounded-full bg-brand-600 text-white" aria-label="Ara">
                     <Phone size={17} />
                   </a>
                 )}

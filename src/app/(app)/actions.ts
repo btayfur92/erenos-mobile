@@ -46,6 +46,7 @@ export interface RecordInput {
   hospital: string;
   contact_name: string;
   contact_phone: string;
+  contact_ext: string;
   notes: string;
   lines: LineInput[];
 }
@@ -66,6 +67,7 @@ export async function saveRecord(input: RecordInput): Promise<ActionResult> {
     p_hospital: input.hospital,
     p_contact_name: input.contact_name,
     p_contact_phone: input.contact_phone,
+    p_contact_ext: input.contact_ext,
     p_notes: input.notes,
     p_lines: lines,
   });

@@ -12,7 +12,7 @@ import {
   type ActionResult,
 } from "@/app/(app)/actions";
 import { Sheet } from "./sheet";
-import { formatMoney, formatQty } from "@/lib/format";
+import { formatMoney, formatPhone, formatQty, telHref } from "@/lib/format";
 import type { LineProgress, RecordLine, SalesRecord } from "@/lib/types";
 
 function parseNum(v: string) {
@@ -130,9 +130,9 @@ function CallSheet({ open, onClose, record }: { open: boolean; onClose: () => vo
     <Sheet open={open} onClose={onClose} title="Görüşme notu">
       <div className="space-y-4">
         {record.contact_phone && (
-          <a href={`tel:${record.contact_phone}`} className="btn-secondary w-full">
+          <a href={telHref(record.contact_phone, record.contact_ext)} className="btn-secondary w-full">
             <PhoneCall size={18} /> {record.contact_name ? `${record.contact_name} · ` : ""}
-            {record.contact_phone}
+            {formatPhone(record.contact_phone, record.contact_ext)}
           </a>
         )}
         <textarea

@@ -95,6 +95,7 @@ create table public.records (
   hospital text not null,
   contact_name text,
   contact_phone text,
+  contact_ext text,                       -- sabit hatta dahili numara
   notes text,
   source_record_id uuid references public.records (id) on delete set null,
   converted_record_id uuid references public.records (id) on delete set null,
@@ -250,6 +251,7 @@ create or replace function public.save_record(
   p_hospital text,
   p_contact_name text,
   p_contact_phone text,
+  p_contact_ext text,
   p_notes text,
   p_lines jsonb
 )
@@ -274,9 +276,10 @@ begin
     if v_status is null then
       raise exception 'Bu satış tipi henüz desteklenmiyor.';
     end if;
-    insert into records (type, status, record_date, file_no, hospital, contact_name, contact_phone, notes)
+    insert into records (type, status, record_date, file_no, hospital, contact_name, contact_phone, contact_ext, notes)
     values (p_type, v_status, p_record_date, nullif(trim(p_file_no), ''), trim(p_hospital),
-            nullif(trim(p_contact_name), ''), nullif(trim(p_contact_phone), ''), nullif(trim(p_notes), ''))
+            nullif(trim(p_contact_name), ''), nullif(trim(p_contact_phone), ''), nullif(trim(p_contact_ext), ''),
+            nullif(trim(p_notes), ''))
     returning id into v_id;
   else
     if exists (select 1 from records where id = v_id and status in ('onaylandi', 'reddedildi')) then
@@ -288,6 +291,7 @@ begin
       hospital = trim(p_hospital),
       contact_name = nullif(trim(p_contact_name), ''),
       contact_phone = nullif(trim(p_contact_phone), ''),
+      contact_ext = nullif(trim(p_contact_ext), ''),
       notes = nullif(trim(p_notes), '')
     where id = v_id;
     if not found then
