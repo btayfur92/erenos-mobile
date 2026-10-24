@@ -1,11 +1,6 @@
 export type RecordType = "yaklasik_maliyet" | "dogrudan_temin" | "ihale_siparisi" | "genel_siparis";
 
-export type RecordStatus =
-  | "acik"
-  | "arama_bekliyor"
-  | "arandi"
-  | "onaylandi"
-  | "reddedildi";
+export type RecordStatus = "acik" | "arama_bekliyor" | "arandi" | "onaylandi" | "reddedildi";
 
 export type ShipmentStatus = "sevk_bekliyor" | "teslim_edildi";
 
@@ -84,20 +79,22 @@ export interface Shipment {
   records?: Pick<SalesRecord, "id" | "hospital" | "file_no" | "record_date"> | null;
 }
 
-export type IncomingStatus = "bekliyor" | "teslim_alindi";
+export type ManualDirection = "gelecek" | "gidecek";
+export type ManualStatus = "bekliyor" | "tamamlandi";
 
-/** Gelecek sevkiyat: tedarikçiden bize gelecek ürünler. */
-export interface IncomingShipment {
+/** Elle eklenen sevkiyat: gelecek (tedarikçiden bize) ya da doğrudan temine bağlı olmayan gidecek. */
+export interface ManualShipment {
   id: string;
-  supplier: string;
+  direction: ManualDirection;
+  party: string;
   product_details: string;
   quantity: number | null;
   unit: string | null;
-  expected_date: string;
+  due_date: string;
   note: string | null;
-  status: IncomingStatus;
-  received_at: string | null;
-  received_by: string | null;
+  status: ManualStatus;
+  completed_at: string | null;
+  completed_by: string | null;
   created_by: string | null;
   created_at: string;
 }

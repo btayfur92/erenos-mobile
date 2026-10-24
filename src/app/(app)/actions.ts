@@ -4,7 +4,7 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { sendToAll, type PushPayload } from "@/lib/push";
-import { RECORD_TYPE_LABEL, type RecordType } from "@/lib/types";
+import { RECORD_TYPE_LABEL, type ManualDirection, type RecordType } from "@/lib/types";
 import { formatQty } from "@/lib/format";
 import { normalizePhone, PHONE_ERROR } from "@/lib/phone";
 
@@ -228,81 +228,91 @@ export async function deleteRecord(recordId: string): Promise<ActionResult> {
 }
 
 // ---------------------------------------------------------------------------
-// Gelecek sevkiyatlar (tedarikçiden gelecek ürünler)
+// Elle eklenen sevkiyatlar: gelecek (tedarikçiden bize) ve doğrudan temine bağlı olmayan gidecek
 // ---------------------------------------------------------------------------
 
-export interface IncomingInput {
-  supplier: string;
+export interface ManualShipmentInput {
+  direction: ManualDirection;
+  party: string;
   product_details: string;
   quantity: number | null;
   unit: string;
-  expected_date: string;
+  due_date: string;
   note: string;
 }
 
-function checkIncoming(input: IncomingInput): string | null {
-  if (!input.supplier.trim()) return "Tedarikçi adı gerekli.";
+function checkManual(input: ManualShipmentInput): string | null {
+  if (input.direction !== "gelecek" && input.direction !== "gidecek") return "Sevkiyat türünü seçin.";
+  const gelecek = input.direction === "gelecek";
+  if (!input.party.trim()) return gelecek ? "Tedarikçi adı gerekli." : "Hastane / alıcı adı gerekli.";
   if (!input.product_details.trim()) return "Ürün detayını girin.";
   if (input.quantity !== null && !(input.quantity > 0)) return "Miktar sıfırdan büyük olmalı ya da boş bırakılmalı.";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.expected_date)) return "Beklenen tarihi seçin.";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.due_date)) return gelecek ? "Beklenen tarihi seçin." : "Sevk tarihini seçin.";
   return null;
 }
 
-const incomingFields = (input: IncomingInput) => ({
-  supplier: input.supplier.trim(),
+const manualFields = (input: ManualShipmentInput) => ({
+  party: input.party.trim(),
   product_details: input.product_details.trim(),
   quantity: input.quantity,
   unit: input.quantity !== null ? input.unit : null,
-  expected_date: input.expected_date,
+  due_date: input.due_date,
   note: input.note.trim() || null,
 });
 
-export async function createIncoming(input: IncomingInput): Promise<ActionResult> {
+export async function createManualShipment(input: ManualShipmentInput): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
-  const invalid = checkIncoming(input);
+  const invalid = checkManual(input);
   if (invalid) return { ok: false, error: invalid };
-  const { data, error } = await supabase.from("incoming_shipments").insert(incomingFields(input)).select("id").single();
+  const { data, error } = await supabase
+    .from("manual_shipments")
+    .insert({ direction: input.direction, ...manualFields(input) })
+    .select("id")
+    .single();
   if (error) return fail(error);
-  notify({ title: `Gelecek sevkiyat: ${input.supplier.trim()}`, body: input.product_details.trim(), url: "/sevkiyat" }, user.id);
+  const kind = input.direction === "gelecek" ? "Gelecek" : "Gidecek";
+  notify({ title: `${kind} sevkiyat: ${input.party.trim()}`, body: input.product_details.trim(), url: "/sevkiyat" }, user.id);
   refresh();
   return { ok: true, id: data.id };
 }
 
-/** Yanlış girilen gelecek sevkiyatı düzeltir; teslim alınmış olanlar değişmez. Bildirim gönderilmez. */
-export async function updateIncoming(id: string, input: IncomingInput): Promise<ActionResult> {
+/** Yanlış girilen sevkiyatı düzeltir; türü ve tamamlanmış olanlar değişmez. Bildirim gönderilmez. */
+export async function updateManualShipment(id: string, input: ManualShipmentInput): Promise<ActionResult> {
   const { supabase } = await requireUser();
-  const invalid = checkIncoming(input);
+  const invalid = checkManual(input);
   if (invalid) return { ok: false, error: invalid };
   const { data, error } = await supabase
-    .from("incoming_shipments")
-    .update(incomingFields(input))
+    .from("manual_shipments")
+    .update(manualFields(input))
     .eq("id", id)
     .eq("status", "bekliyor")
     .select("id");
   if (error) return fail(error);
-  if (!data?.length) return { ok: false, error: "Bu sevkiyat teslim alınmış ya da silinmiş." };
+  if (!data?.length) return { ok: false, error: "Bu sevkiyat tamamlanmış ya da silinmiş." };
   refresh();
   return { ok: true, id };
 }
 
-export async function markReceived(id: string): Promise<ActionResult> {
+/** Gelecekte "Teslim alındı", gidecekte "Teslim edildi". */
+export async function completeManualShipment(id: string): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
   const { data, error } = await supabase
-    .from("incoming_shipments")
-    .update({ status: "teslim_alindi", received_at: new Date().toISOString(), received_by: user.id })
+    .from("manual_shipments")
+    .update({ status: "tamamlandi", completed_at: new Date().toISOString(), completed_by: user.id })
     .eq("id", id)
     .eq("status", "bekliyor")
-    .select("supplier, product_details")
+    .select("direction, party, product_details")
     .single();
   if (error) return fail(error);
-  notify({ title: `Sevkiyat teslim alındı: ${data.supplier}`, body: data.product_details, url: "/sevkiyat?d=tamam" }, user.id);
+  const verb = data.direction === "gelecek" ? "teslim alındı" : "teslim edildi";
+  notify({ title: `Sevkiyat ${verb}: ${data.party}`, body: data.product_details, url: "/sevkiyat?d=tamam" }, user.id);
   refresh();
   return { ok: true };
 }
 
-export async function cancelIncoming(id: string): Promise<ActionResult> {
+export async function cancelManualShipment(id: string): Promise<ActionResult> {
   const { supabase } = await requireUser();
-  const { error } = await supabase.from("incoming_shipments").delete().eq("id", id).eq("status", "bekliyor");
+  const { error } = await supabase.from("manual_shipments").delete().eq("id", id).eq("status", "bekliyor");
   if (error) return fail(error);
   refresh();
   return { ok: true };

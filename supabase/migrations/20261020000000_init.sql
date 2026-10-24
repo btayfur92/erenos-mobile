@@ -26,7 +26,8 @@ create type public.record_status as enum (
 );
 
 create type public.shipment_status as enum ('sevk_bekliyor', 'teslim_edildi');
-create type public.incoming_status as enum ('bekliyor', 'teslim_alindi');
+create type public.manual_direction as enum ('gelecek', 'gidecek');
+create type public.manual_status as enum ('bekliyor', 'tamamlandi');
 
 -- ---------------------------------------------------------------------------
 -- Profiller (auth.users ile 1-1)
@@ -168,23 +169,27 @@ create table public.shipment_items (
 
 create index shipment_items_line_idx on public.shipment_items (line_id);
 
--- Gelecek sevkiyatlar: tedarikçiden bize gelecek ürünler.
-create table public.incoming_shipments (
+-- Elle eklenen sevkiyatlar (Sevkiyat sayfasındaki + Ekle):
+--   gelecek: tedarikçiden bize gelecek ürünler (party = tedarikçi, due_date = beklenen tarih, tamamlandi = teslim alındı)
+--   gidecek: doğrudan temine bağlı olmayan, hastaneye/alıcıya gidecek ürünler (party = alıcı, due_date = sevk tarihi,
+--            tamamlandi = teslim edildi). Doğrudan teminden aktarılanlar shipments tablosundadır.
+create table public.manual_shipments (
   id uuid primary key default gen_random_uuid(),
-  supplier text not null check (length(trim(supplier)) > 0),
+  direction public.manual_direction not null,
+  party text not null check (length(trim(party)) > 0),
   product_details text not null check (length(trim(product_details)) > 0),
   quantity numeric(14, 2) check (quantity is null or quantity > 0),  -- belli değilse boş
   unit text,
-  expected_date date not null default current_date,
+  due_date date not null default current_date,
   note text,
-  status public.incoming_status not null default 'bekliyor',
-  received_at timestamptz,
-  received_by uuid references public.profiles (id) on delete set null,
+  status public.manual_status not null default 'bekliyor',
+  completed_at timestamptz,
+  completed_by uuid references public.profiles (id) on delete set null,
   created_by uuid references public.profiles (id) on delete set null default auth.uid(),
   created_at timestamptz not null default now()
 );
 
-create index incoming_shipments_status_idx on public.incoming_shipments (status, expected_date);
+create index manual_shipments_status_idx on public.manual_shipments (status, due_date);
 
 -- Görüşmeler: çalışanların hastane ziyaret notları. Herkes görür, herkes düzeltebilir.
 create table public.meetings (
@@ -495,7 +500,7 @@ alter table public.record_lines enable row level security;
 alter table public.call_logs enable row level security;
 alter table public.shipments enable row level security;
 alter table public.shipment_items enable row level security;
-alter table public.incoming_shipments enable row level security;
+alter table public.manual_shipments enable row level security;
 alter table public.meetings enable row level security;
 alter table public.push_subscriptions enable row level security;
 
@@ -514,7 +519,7 @@ create policy "shipments_all" on public.shipments
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 create policy "shipment_items_all" on public.shipment_items
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
-create policy "incoming_shipments_all" on public.incoming_shipments
+create policy "manual_shipments_all" on public.manual_shipments
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 create policy "meetings_all" on public.meetings
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());

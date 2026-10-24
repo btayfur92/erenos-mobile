@@ -3,22 +3,22 @@ import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { ShipmentCard } from "@/components/shipment-card";
-import { IncomingCard } from "@/components/incoming-card";
-import { AddIncoming } from "@/components/add-incoming";
-import type { IncomingShipment, Profile, Shipment } from "@/lib/types";
+import { ManualShipmentCard } from "@/components/manual-shipment-card";
+import { AddShipment } from "@/components/add-shipment";
+import type { ManualShipment, Profile, Shipment } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Sevkiyat" };
 
 /**
- * Sevkiyat programı. Gidecek (onaylanan doğrudan teminlerden hastaneye) ve gelecek (tedarikçiden bize)
- * sevkiyatlar tek listede, tarih sırasıyla: bekleyenlerde en yakın tarih üstte, tamamlananlarda en son teslim üstte.
+ * Sevkiyat programı. Gidecek (onaylanan doğrudan teminlerden aktarılan ya da elle eklenen) ve gelecek
+ * (tedarikçiden bize) sevkiyatlar tek listede, tarih sırasıyla: bekleyenlerde en yakın tarih üstte, tamamlananlarda en son teslim üstte.
  */
 export default async function ShipmentsPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
   const { d } = await searchParams;
   const done = d === "tamam" || d === "teslim";
   const { supabase } = await requireUser();
 
-  const [{ data: outgoing }, { data: incoming }, { data: profiles }] = await Promise.all([
+  const [{ data: outgoing }, { data: manual }, { data: profiles }] = await Promise.all([
     done
       ? supabase
           .from("shipments")
@@ -37,20 +37,20 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
           .returns<Shipment[]>(),
     done
       ? supabase
-          .from("incoming_shipments")
+          .from("manual_shipments")
           .select("*")
-          .eq("status", "teslim_alindi")
-          .order("received_at", { ascending: false })
+          .eq("status", "tamamlandi")
+          .order("completed_at", { ascending: false })
           .limit(200)
-          .returns<IncomingShipment[]>()
+          .returns<ManualShipment[]>()
       : supabase
-          .from("incoming_shipments")
+          .from("manual_shipments")
           .select("*")
           .eq("status", "bekliyor")
-          .order("expected_date", { ascending: true })
+          .order("due_date", { ascending: true })
           .order("created_at", { ascending: true })
           .limit(200)
-          .returns<IncomingShipment[]>(),
+          .returns<ManualShipment[]>(),
     supabase.from("profiles").select("id, full_name, username").returns<Pick<Profile, "id" | "full_name" | "username">[]>(),
   ]);
   const names = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name || p.username]));
@@ -59,15 +59,15 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
       at: (done ? s.delivered_at : s.planned_date) ?? "",
       node: <ShipmentCard key={`s-${s.id}`} shipment={s} names={names} showRecord />,
     })),
-    ...(incoming ?? []).map((i) => ({
-      at: (done ? i.received_at : i.expected_date) ?? "",
-      node: <IncomingCard key={`i-${i.id}`} item={i} names={names} />,
+    ...(manual ?? []).map((m) => ({
+      at: (done ? m.completed_at : m.due_date) ?? "",
+      node: <ManualShipmentCard key={`m-${m.id}`} item={m} names={names} />,
     })),
   ].sort((x, y) => (done ? y.at.localeCompare(x.at) : x.at.localeCompare(y.at)));
 
   return (
     <>
-      <PageHeader title="Sevkiyat" subtitle={done ? "Tamamlanan sevkiyatlar" : "Sevkiyat programı"} action={<AddIncoming />} />
+      <PageHeader title="Sevkiyat" subtitle={done ? "Tamamlanan sevkiyatlar" : "Sevkiyat programı"} action={<AddShipment />} />
       <main className="mx-auto max-w-xl px-4 pt-4">
         <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
           <Link
@@ -92,7 +92,7 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
               text={
                 done
                   ? "Tamamlanan sevkiyat yok."
-                  : "Onaylanan doğrudan teminlerden aktarılan gidecek sevkiyatlar ve sağ üstteki “Gelecek” düğmesiyle eklenen gelecek sevkiyatlar burada tarih sırasıyla görünür."
+                  : "Doğrudan teminden aktarılanlar ve sağ üstteki “Ekle” düğmesiyle eklenen gelecek ve gidecek sevkiyatlar burada tarih sırasıyla görünür."
               }
             />
           )}
