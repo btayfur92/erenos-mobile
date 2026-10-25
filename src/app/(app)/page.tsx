@@ -8,11 +8,12 @@ import { RecordCard } from "@/components/record-card";
 import { EmptyState } from "@/components/empty-state";
 import { ChipStrip } from "@/components/chip-strip";
 import { RejectedList } from "@/components/rejected-list";
-import type { SalesRecord } from "@/lib/types";
+import { isFullyDelivered, type SalesRecord } from "@/lib/types";
 
 const FILTERS = [
   { key: "gundem", label: "Gündemdekiler" },
   { key: "dt", label: "Doğrudan Temin" },
+  { key: "gs", label: "Genel Satış" },
   { key: "ym", label: "Yaklaşık Maliyet" },
   { key: "arama", label: "Arama bekleyen" },
   { key: "red", label: "Reddedilen" },
@@ -22,6 +23,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const { f = "gundem", q = "", d: dParam } = await searchParams;
   // Doğrudan Temin sekmesi sonuçlanmış kayıtları Onaylanan / Reddedilen olarak ayırır.
   // Yaklaşık maliyetler Gündem'e girmez; kendi sekmesinde Bekleyen / Onaylanan / Reddedilen olarak durur.
+  // Genel satış onaylanana kadar Gündem'de, sonra Genel Satış sekmesinde (teslimatı sürenler üstte).
   const d = dParam ?? (f === "ym" ? "bekle" : "onay");
   const resolved = d === "red" ? "reddedildi" : d === "bekle" && f === "ym" ? "acik" : "onaylandi";
   const { supabase, profile } = await requireUser();
@@ -29,15 +31,16 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   let query = supabase
     .from("records")
     .select("*, record_lines(*)")
-    .in("type", ["yaklasik_maliyet", "dogrudan_temin"])
+    .in("type", ["yaklasik_maliyet", "dogrudan_temin", "genel_siparis"])
     .order("record_date", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(300);
 
-  // Gündem: henüz sonuçlanmamış doğrudan teminler.
-  if (f === "gundem") query = query.eq("type", "dogrudan_temin").in("status", ["arama_bekliyor", "arandi"]);
+  // Gündem: henüz sonuçlanmamış doğrudan teminler ve onay bekleyen genel satışlar (DT hiç "acik" olmaz, GS hiç aranmaz).
+  if (f === "gundem") query = query.in("type", ["dogrudan_temin", "genel_siparis"]).in("status", ["arama_bekliyor", "arandi", "acik"]);
   if (f === "arama") query = query.eq("status", "arama_bekliyor");
   if (f === "dt") query = query.eq("type", "dogrudan_temin").eq("status", resolved);
+  if (f === "gs") query = query.eq("type", "genel_siparis").eq("status", "onaylandi");
   if (f === "ym") query = query.eq("type", "yaklasik_maliyet").eq("status", resolved);
 
   const term = q.trim().replace(/[%,()]/g, " ");
@@ -62,6 +65,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     getRates(),
   ]);
 
+  // Genel Satış: tamamı teslim edilenler en alta (kendi içlerinde tarih sırası korunur).
+  const list =
+    f === "gs"
+      ? [...(records ?? [])].sort((a, b) => Number(isFullyDelivered(a, progress)) - Number(isFullyDelivered(b, progress)))
+      : records;
+
   const firstName = (profile.full_name || profile.username).split(" ")[0];
 
   return (
@@ -74,7 +83,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             scroll={false}
             className="mb-4 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-accent-600 to-accent-500 px-2.5 py-1.5 text-white shadow-card"
           >
-            <span className="grid h-7 min-w-7 shrink-0 place-items-center rounded-lg bg-white/20 px-1.5 text-[15px] font-bold">{waitingCount}</span>
+            <span className="grid h-7 min-w-7 shrink-0 place-items-center rounded-lg bg-white/20 px-1.5 text-[15px] font-bold">
+              {waitingCount}
+            </span>
             <b className="text-[15px] font-semibold">Aranması gereken hastane var</b>
           </Link>
         )}
@@ -147,13 +158,19 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           <RejectedList supabase={supabase} term={term} />
         ) : (
           <div className="mt-4 space-y-3">
-            {records?.length ? (
-              records.map((r) => <RecordCard key={r.id} record={r} progress={progress} rates={rates} />)
+            {list?.length ? (
+              list.map((r) => <RecordCard key={r.id} record={r} progress={progress} rates={rates} />)
             ) : (
               <EmptyState
                 icon={<FileText size={26} />}
                 title={term ? "Sonuç bulunamadı" : "Henüz kayıt yok"}
-                text={term ? "Farklı bir arama deneyin." : "İlk yaklaşık maliyet veya doğrudan temin kaydını ekleyin."}
+                text={
+                  term
+                    ? "Farklı bir arama deneyin."
+                    : f === "gs"
+                      ? "Onaylanan genel satışlar burada görünür."
+                      : "İlk kaydı alttaki + ile ekleyin."
+                }
               >
                 {!term && (
                   <Link href="/yeni" className="btn-primary">

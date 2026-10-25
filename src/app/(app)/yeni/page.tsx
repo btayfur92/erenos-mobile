@@ -11,7 +11,12 @@ export default async function NewRecordPage({ searchParams }: { searchParams: Pr
     <>
       <PageHeader title="Yeni kayıt" back="/" />
       <main className="mx-auto max-w-xl px-4 pt-4">
-        <RecordForm initial={{ type: tip === "ym" ? "yaklasik_maliyet" : "dogrudan_temin", record_date: todayIstanbul() }} />
+        <RecordForm
+          initial={{
+            type: tip === "ym" ? "yaklasik_maliyet" : tip === "gs" ? "genel_siparis" : "dogrudan_temin",
+            record_date: todayIstanbul(),
+          }}
+        />
       </main>
     </>
   );

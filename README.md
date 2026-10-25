@@ -2,7 +2,7 @@
 
 Erenos Medikal'in şirket içi satış takip uygulaması. Telefonda ana ekrana eklenerek uygulama gibi kullanılır (PWA).
 
-- **Yaklaşık Maliyet** ve **Doğrudan Temin** kayıtları, çok kalemli ürün listesi, dosya/ihale no
+- **Yaklaşık Maliyet**, **Doğrudan Temin** ve **Genel Satış** kayıtları, çok kalemli ürün listesi, dosya/ihale no
 - Doğrudan teminde hastane aranana kadar **2 saatte bir bildirim** (hafta içi 09:00–18:00)
 - Onay/ret, kalem bazında onaylanan miktar, **Reddedilenler** fiyat arşivi
 - **Sevkiyat**: parça parça sevk, teslim takibi; ana ekranda toplam / sevkte / teslim / kalan
@@ -89,6 +89,7 @@ curl -H "Authorization: Bearer <CRON_SECRET>" "https://<site>/mobiluygulama/api/
 | **Sonucu düzenle** | Sonuçlanmış doğrudan temin yeniden düzenlenebilir; onaylanan miktar sevkiyata aktarılanın altına inemez, sevkiyatı olan kayıt reddedilemez |
 | Yaklaşık maliyet | Yalnızca takip amaçlı: *Onaylandı* veya *Reddedildi* olarak işaretlenir (gerekirse geri alınır) |
 | Ana ekran | **Gündemdekiler** sekmesinde yalnızca sonuçlanmamış doğrudan teminler görünür; yaklaşık maliyetler Gündem'e girmez, Yaklaşık Maliyet sekmesinin **Bekleyenler** bölümünde onaylanır veya reddedilir; sonuçlananlar kendi tipinin sekmesinde (Doğrudan Temin / Yaklaşık Maliyet) altında **Onaylananlar** ve **Reddedilenler** sekmelerinde kalır. Üst şerit sırası: Gündemdekiler, Doğrudan Temin, Yaklaşık Maliyet, Arama bekleyen, Reddedilen (fiyat arşivi). Alt bantta Reddedilen yerine **Görüşmeler** var |
+| Genel Satış | + menüsünden eklenir (sipariş tarihi, varsa dosya/ihale no, müşteri adı, varsa ilgili kişi/telefon/dahili, sipariş geçilen ürünler, isteğe bağlı not). Aranmaz, hatırlatma gitmez; onaylanana kadar **Gündemdekiler**'de *Onay bekliyor* olarak durur. **Onayla** sayfasında reddetme yoktur, kalemler onaylı seçili gelir. Onaylanınca **Genel Satış** sekmesine geçer; orada sevkiyata aktarılır, sonucu düzenlenebilir, kalan miktar görünür. Tamamı teslim edilenler listenin en altında |
 | Yeni kayıt | Kaydedince liste ekranına dönülür: doğrudan temin Gündem'e, yaklaşık maliyet kendi sekmesinin Bekleyenler bölümüne. Telefon geçerli bir Türkiye numarası olmalıdır (cep, sabit hat, 0850 veya 444) ve `0xxx xxx xx xx` biçiminde saklanır. İsteğe bağlı **Dahili** alanı yalnızca bilgi olarak gösterilir; arama düğmesi sadece numarayı arar |
 | Kart toplamı | Listede her kartta tek toplam görünür; farklı para birimleri TCMB günlük döviz satış kuruyla TL'ye çevrilip ≈ ile yazılır (kur alınamazsa birimlere göre ayrı). Kayıt detayının üstündeki toplam da aynı şekilde tek rakamdır; kalem satırları kendi para biriminde kalır |
 | Görüşmeler | Ziyaret notları: tarih (gün adıyla), hastane, servis, not. Herkes görür, en yeni tarih üstte, aranabilir, düzeltilebilir (kim düzelttiği yazılır). Yeni not herkese bildirim gönderir |
@@ -113,5 +114,5 @@ supabase/cron.sql             Zamanlanmış hatırlatma işi
 
 ## Sonraki adımlar
 
-- İhale Siparişi ve Genel Sipariş tipleri (`record_type` enum'unda yer ayrıldı)
+- İhale Siparişi tipi (`record_type` enum'unda yer ayrıldı)
 - Rollere göre yetki ayrımı (şimdilik herkes her işi yapabilir, kullanıcı yönetimi yöneticide)

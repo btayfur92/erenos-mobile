@@ -1,5 +1,5 @@
 -- Erenos Mobile — ilk şema
--- Satış kayıtları (Yaklaşık Maliyet, Doğrudan Temin), ürün kalemleri,
+-- Satış kayıtları (Yaklaşık Maliyet, Doğrudan Temin, Genel Satış), ürün kalemleri,
 -- arama notları, sevkiyatlar, push abonelikleri ve kullanıcı profilleri.
 
 create extension if not exists pgcrypto;
@@ -12,11 +12,12 @@ create type public.record_type as enum (
   'yaklasik_maliyet',
   'dogrudan_temin',
   'ihale_siparisi',   -- ileride
-  'genel_siparis'     -- ileride
+  'genel_siparis'     -- arayüzde "Genel Satış"
 );
 
 -- YM:  acik -> onaylandi | reddedildi   (yalnızca takip amaçlı)
 -- DT:  arama_bekliyor -> arandi -> onaylandi | reddedildi
+-- GS:  acik -> onaylandi             (sipariş zaten alınmıştır; reddedilmez, aranmaz)
 create type public.record_status as enum (
   'acik',
   'arama_bekliyor',
@@ -110,7 +111,8 @@ create table public.records (
   constraint records_status_matches_type check (
     (type = 'yaklasik_maliyet' and status in ('acik', 'onaylandi', 'reddedildi'))
     or (type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'onaylandi', 'reddedildi'))
-    or (type in ('ihale_siparisi', 'genel_siparis'))
+    or (type = 'genel_siparis' and status in ('acik', 'onaylandi'))
+    or (type = 'ihale_siparisi')
   )
 );
 
@@ -312,7 +314,8 @@ begin
 
   if v_id is null then
     v_status := case p_type when 'yaklasik_maliyet' then 'acik'::public.record_status
-                            when 'dogrudan_temin' then 'arama_bekliyor'::public.record_status end;
+                            when 'dogrudan_temin' then 'arama_bekliyor'::public.record_status
+                            when 'genel_siparis' then 'acik'::public.record_status end;
     if v_status is null then
       raise exception 'Bu satış tipi henüz desteklenmiyor.';
     end if;
@@ -378,10 +381,10 @@ begin
 end;
 $$;
 
--- DT sonucu (ilk giriş veya sonradan düzeltme).
+-- DT / Genel Satış sonucu (ilk giriş veya sonradan düzeltme). Genel satış yalnızca onaylanır.
 -- p_lines (onayda): [{line_id, approved_qty}] — listede olmayan kalemler reddedilmiş sayılır.
 -- Sevkiyata aktarılmış miktarın altına inilemez.
-create or replace function public.set_dt_result(
+create or replace function public.set_result(
   p_record_id uuid,
   p_approved boolean,
   p_note text,
@@ -401,10 +404,14 @@ declare
 begin
   if not exists (
     select 1 from records
-    where id = p_record_id and type = 'dogrudan_temin'
-      and status in ('arama_bekliyor', 'arandi', 'onaylandi', 'reddedildi')
+    where id = p_record_id
+      and ((type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'onaylandi', 'reddedildi'))
+        or (type = 'genel_siparis' and status in ('acik', 'onaylandi')))
   ) then
     raise exception 'Bu kayıt için sonuç girilemez.';
+  end if;
+  if not p_approved and exists (select 1 from records where id = p_record_id and type = 'genel_siparis') then
+    raise exception 'Genel satış reddedilemez.';
   end if;
 
   if p_approved then

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ChevronRight, Phone } from "lucide-react";
 import { formatDate, formatQty, singleTotal } from "@/lib/format";
-import type { LineProgress, SalesRecord } from "@/lib/types";
-import { StatusBadge, TypeBadge } from "./status-badge";
+import { isFullyDelivered, type LineProgress, type SalesRecord } from "@/lib/types";
+import { StatusBadge, TypeBadge, statusLabel } from "./status-badge";
 import { ProgressBar } from "./line-progress";
 
 export function RecordCard({
@@ -16,9 +16,8 @@ export function RecordCard({
 }) {
   const lines = [...(record.record_lines ?? [])].sort((a, b) => a.sort_order - b.sort_order);
   const approvedLines = lines.filter((l) => l.approved);
-  const isApproved = record.status === "onaylandi" && record.type === "dogrudan_temin";
-  const fullyDelivered =
-    isApproved && approvedLines.length > 0 && approvedLines.every((l) => Number(progress.get(l.id)?.remaining ?? 1) <= 0 && Number(progress.get(l.id)?.in_shipment ?? 1) <= 0);
+  const isApproved = record.status === "onaylandi" && (record.type === "dogrudan_temin" || record.type === "genel_siparis");
+  const fullyDelivered = isFullyDelivered(record, progress);
 
   return (
     <Link href={`/kayit/${record.id}`} className="card block p-4 transition active:scale-[0.99]">
@@ -71,7 +70,7 @@ export function RecordCard({
       )}
 
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-line/70 pt-3">
-        <StatusBadge status={record.status} label={fullyDelivered ? "Tamamı teslim edildi" : undefined} />
+        <StatusBadge status={record.status} label={fullyDelivered ? "Tamamı teslim edildi" : statusLabel(record)} />
         <span className="flex items-center gap-1 text-[13px] font-semibold tabular-nums text-ink/80">
           {record.status === "arama_bekliyor" && record.contact_phone && <Phone size={13} className="text-accent-600" />}
           {singleTotal(isApproved ? approvedLines.map((l) => ({ ...l, quantity: l.approved_qty ?? 0 })) : lines, rates)}

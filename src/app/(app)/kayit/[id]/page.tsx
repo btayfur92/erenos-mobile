@@ -8,7 +8,7 @@ import { getRates } from "@/lib/fx";
 import { telHref } from "@/lib/phone";
 import { RECORD_TYPE_LABEL, type CallLog, type LineProgress, type Profile, type SalesRecord, type Shipment } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
-import { StatusBadge } from "@/components/status-badge";
+import { StatusBadge, statusLabel } from "@/components/status-badge";
 import { ProgressBar, ProgressStats } from "@/components/line-progress";
 import { DeleteButton, RecordActions } from "@/components/record-actions";
 import { ShipmentCard } from "@/components/shipment-card";
@@ -55,7 +55,9 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
   const progress: Record<string, LineProgress> = Object.fromEntries(progressMap);
   const lines = [...(record.record_lines ?? [])].sort((a, b) => a.sort_order - b.sort_order);
   const decided = record.status === "onaylandi" || record.status === "reddedildi";
-  const approvedDt = record.status === "onaylandi" && record.type === "dogrudan_temin";
+  const gs = record.type === "genel_siparis";
+  // Onaylanan DT ve genel satışta toplam, onaylanan miktarlar üzerinden hesaplanır.
+  const approved = record.status === "onaylandi" && (record.type === "dogrudan_temin" || gs);
   const source = linked.data?.find((r) => r.id === record.source_record_id);
   const converted = linked.data?.find((r) => r.id === record.converted_record_id);
 
@@ -64,10 +66,14 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
       <PageHeader
         title={record.hospital}
         subtitle={RECORD_TYPE_LABEL[record.type]}
-        back={record.status === "reddedildi" ? "/?f=red" : "/"}
+        back={record.status === "reddedildi" ? "/?f=red" : gs && record.status === "onaylandi" ? "/?f=gs" : "/"}
         action={
           !decided && (
-            <Link href={`/kayit/${id}/duzenle`} className="grid h-10 w-10 place-items-center rounded-xl text-brand-600 hover:bg-brand-50" aria-label="Düzenle">
+            <Link
+              href={`/kayit/${id}/duzenle`}
+              className="grid h-10 w-10 place-items-center rounded-xl text-brand-600 hover:bg-brand-50"
+              aria-label="Düzenle"
+            >
               <Pencil size={19} />
             </Link>
           )
@@ -83,15 +89,20 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
               <span className="text-[13px] text-white/75">{formatDate(record.record_date)}</span>
             </div>
             <h2 className="mt-3 text-xl font-semibold leading-snug">{record.hospital}</h2>
-            <p className="mt-0.5 text-[14px] text-white/75">{record.file_no ? `Dosya / ihale no: ${record.file_no}` : "Dosya no girilmedi"}</p>
-            <p className="mt-4 text-[13px] text-white/70">{approvedDt ? "Onaylanan toplam" : "Toplam teklif"}</p>
+            <p className="mt-0.5 text-[14px] text-white/75">
+              {record.file_no ? `Dosya / ihale no: ${record.file_no}` : "Dosya no girilmedi"}
+            </p>
+            <p className="mt-4 text-[13px] text-white/70">{approved ? "Onaylanan toplam" : gs ? "Sipariş toplamı" : "Toplam teklif"}</p>
             <p className="text-2xl font-semibold tabular-nums tracking-tight">
-              {singleTotal(approvedDt ? lines.filter((l) => l.approved).map((l) => ({ ...l, quantity: Number(l.approved_qty ?? 0) })) : lines, rates)}
+              {singleTotal(
+                approved ? lines.filter((l) => l.approved).map((l) => ({ ...l, quantity: Number(l.approved_qty ?? 0) })) : lines,
+                rates,
+              )}
             </p>
           </div>
           <div className="space-y-3 p-4">
             <div className="flex items-center justify-between">
-              <StatusBadge status={record.status} />
+              <StatusBadge status={record.status} label={statusLabel(record)} />
               {record.result_at && <span className="text-xs text-muted">{formatDateTime(record.result_at)}</span>}
             </div>
             {(record.contact_name || record.contact_phone) && (
@@ -101,10 +112,16 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[14px] font-semibold">{record.contact_name || "İlgili kişi"}</p>
-                  {record.contact_phone && <p className="text-[13px] text-muted">{formatPhone(record.contact_phone, record.contact_ext)}</p>}
+                  {record.contact_phone && (
+                    <p className="text-[13px] text-muted">{formatPhone(record.contact_phone, record.contact_ext)}</p>
+                  )}
                 </div>
                 {record.contact_phone && (
-                  <a href={telHref(record.contact_phone)} className="grid h-10 w-10 place-items-center rounded-full bg-brand-600 text-white" aria-label="Ara">
+                  <a
+                    href={telHref(record.contact_phone)}
+                    className="grid h-10 w-10 place-items-center rounded-full bg-brand-600 text-white"
+                    aria-label="Ara"
+                  >
                     <Phone size={17} />
                   </a>
                 )}
@@ -118,12 +135,18 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
               </p>
             )}
             {source && (
-              <Link href={`/kayit/${source.id}`} className="flex items-center justify-between rounded-xl bg-brand-50 p-3 text-[14px] font-medium text-brand-700">
+              <Link
+                href={`/kayit/${source.id}`}
+                className="flex items-center justify-between rounded-xl bg-brand-50 p-3 text-[14px] font-medium text-brand-700"
+              >
                 Yaklaşık maliyetten dönüştürüldü <ArrowRight size={16} />
               </Link>
             )}
             {converted && (
-              <Link href={`/kayit/${converted.id}`} className="flex items-center justify-between rounded-xl bg-brand-50 p-3 text-[14px] font-medium text-brand-700">
+              <Link
+                href={`/kayit/${converted.id}`}
+                className="flex items-center justify-between rounded-xl bg-brand-50 p-3 text-[14px] font-medium text-brand-700"
+              >
                 Doğrudan temin kaydına git <ArrowRight size={16} />
               </Link>
             )}
@@ -149,7 +172,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-[15px] font-semibold tabular-nums">{formatMoney(qty * Number(l.unit_price), l.currency)}</p>
-                      {record.status === "onaylandi" && record.type === "dogrudan_temin" && (
+                      {approved && (
                         <span className={`text-[12px] font-semibold ${l.approved ? "text-emerald-700" : "text-accent-600"}`}>
                           {l.approved ? "Onaylandı" : "Onaylanmadı"}
                         </span>
@@ -197,7 +220,9 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                 ))}
               </ol>
             ) : (
-              <p className="card p-4 text-[14px] text-muted">Henüz görüşme kaydı yok. Hastane arandıktan sonra not girilene kadar hatırlatma gönderilir.</p>
+              <p className="card p-4 text-[14px] text-muted">
+                Henüz görüşme kaydı yok. Hastane arandıktan sonra not girilene kadar hatırlatma gönderilir.
+              </p>
             )}
           </Section>
         )}

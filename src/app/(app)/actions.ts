@@ -53,7 +53,7 @@ export interface RecordInput {
 
 export async function saveRecord(input: RecordInput): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
-  if (!input.hospital.trim()) return { ok: false, error: "Hastane adı gerekli." };
+  if (!input.hospital.trim()) return { ok: false, error: input.type === "genel_siparis" ? "Müşteri adı gerekli." : "Hastane adı gerekli." };
   const lines = input.lines.filter((l) => l.product_name.trim());
   if (!lines.length) return { ok: false, error: "En az bir ürün kalemi girin." };
   if (lines.some((l) => !(Number(l.quantity) > 0))) return { ok: false, error: "Ürün miktarları sıfırdan büyük olmalı." };
@@ -111,9 +111,10 @@ export async function setResult(
   lines: { line_id: string; approved_qty: number }[],
 ): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
-  const { data: before } = await supabase.from("records").select("status").eq("id", recordId).single();
+  const { data: before } = await supabase.from("records").select("status, type").eq("id", recordId).single();
   const wasDecided = before?.status === "onaylandi" || before?.status === "reddedildi";
-  const { error } = await supabase.rpc("set_dt_result", {
+  const label = before?.type === "genel_siparis" ? "Genel satış" : "Doğrudan temin";
+  const { error } = await supabase.rpc("set_result", {
     p_record_id: recordId,
     p_approved: approved,
     p_note: note,
@@ -124,7 +125,7 @@ export async function setResult(
   const { data: rec } = await supabase.from("records").select("hospital, file_no").eq("id", recordId).single();
   notify(
     {
-      title: wasDecided ? "Doğrudan temin sonucu güncellendi" : approved ? "Doğrudan temin onaylandı" : "Doğrudan temin reddedildi",
+      title: wasDecided ? `${label} sonucu güncellendi` : approved ? `${label} onaylandı` : `${label} reddedildi`,
       body: `${rec?.hospital ?? ""}${rec?.file_no ? ` · ${rec.file_no}` : ""}${approved ? ` · ${lines.length} kalem onaylandı` : ""}`,
       url: `/kayit/${recordId}`,
     },

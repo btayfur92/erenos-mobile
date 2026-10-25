@@ -125,7 +125,7 @@ export const RECORD_TYPE_LABEL: Record<RecordType, string> = {
   yaklasik_maliyet: "Yaklaşık Maliyet",
   dogrudan_temin: "Doğrudan Temin",
   ihale_siparisi: "İhale Siparişi",
-  genel_siparis: "Genel Sipariş",
+  genel_siparis: "Genel Satış",
 };
 
 export const RECORD_TYPE_SHORT: Record<RecordType, string> = {
@@ -145,3 +145,13 @@ export const STATUS_LABEL: Record<RecordStatus, string> = {
 
 export const CURRENCIES = ["TRY", "USD", "EUR", "GBP"] as const;
 export const UNITS = ["Adet", "Kutu", "Paket", "Koli", "Set", "Litre", "Kg", "Metre"] as const;
+
+/** Onaylanan (DT / Genel Satış) kayıtta onaylı tüm kalemler teslim edildi mi? */
+export function isFullyDelivered(record: SalesRecord, progress: Map<string, LineProgress>) {
+  if (record.status !== "onaylandi" || record.type === "yaklasik_maliyet") return false;
+  const approved = (record.record_lines ?? []).filter((l) => l.approved);
+  return (
+    approved.length > 0 &&
+    approved.every((l) => Number(progress.get(l.id)?.remaining ?? 1) <= 0 && Number(progress.get(l.id)?.in_shipment ?? 1) <= 0)
+  );
+}

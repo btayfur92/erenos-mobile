@@ -40,6 +40,7 @@ export function RecordForm({
   const [error, setError] = useState<string>();
   const [type, setType] = useState<RecordType>(initial?.type ?? "dogrudan_temin");
   const [phoneMsg, setPhoneMsg] = useState("");
+  const gs = type === "genel_siparis";
   const [lines, setLines] = useState<LineDraft[]>(
     initial?.lines?.length
       ? initial.lines.map((l) => ({
@@ -53,8 +54,7 @@ export function RecordForm({
       : [emptyLine()],
   );
 
-  const update = (key: number, patch: Partial<LineDraft>) =>
-    setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  const update = (key: number, patch: Partial<LineDraft>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -91,7 +91,7 @@ export function RecordForm({
     start(async () => {
       const res = await saveRecord(input);
       if (!res.ok) return setError(res.error);
-      // Yeni kayıttan sonra listeye dön: doğrudan temin Gündem'e, yaklaşık maliyet kendi sekmesine düşer.
+      // Yeni kayıttan sonra listeye dön: doğrudan temin ve genel satış Gündem'e, yaklaşık maliyet kendi sekmesine düşer.
       if (initial?.id) router.replace(`/kayit/${res.id}`);
       else router.replace(type === "yaklasik_maliyet" ? "/?f=ym" : "/");
     });
@@ -100,10 +100,11 @@ export function RecordForm({
   return (
     <form onSubmit={onSubmit} className="space-y-5">
       {!lockedType && (
-        <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
+        <div className="grid grid-cols-3 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
           {(
             [
               ["dogrudan_temin", "Doğrudan Temin"],
+              ["genel_siparis", "Genel Satış"],
               ["yaklasik_maliyet", "Yaklaşık Maliyet"],
             ] as const
           ).map(([value, label]) => (
@@ -111,7 +112,7 @@ export function RecordForm({
               key={value}
               type="button"
               onClick={() => setType(value)}
-              className={`rounded-xl py-2.5 text-[14px] font-semibold transition ${
+              className={`rounded-xl px-1 py-2.5 text-[13px] font-semibold leading-tight transition ${
                 type === value ? "bg-brand-600 text-white shadow-sm" : "text-muted"
               }`}
             >
@@ -125,7 +126,7 @@ export function RecordForm({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="field-label" htmlFor="record_date">
-              {type === "dogrudan_temin" ? "Doğrudan temin tarihi" : "Tarih"}
+              {type === "dogrudan_temin" ? "Doğrudan temin tarihi" : gs ? "Sipariş tarihi" : "Tarih"}
             </label>
             <input id="record_date" name="record_date" type="date" required defaultValue={initial?.record_date} className="input" />
           </div>
@@ -138,9 +139,16 @@ export function RecordForm({
         </div>
         <div>
           <label className="field-label" htmlFor="hospital">
-            Hastane
+            {gs ? "Müşteri adı" : "Hastane"}
           </label>
-          <input id="hospital" name="hospital" required defaultValue={initial?.hospital} className="input" placeholder="Hastane adı" />
+          <input
+            id="hospital"
+            name="hospital"
+            required
+            defaultValue={initial?.hospital}
+            className="input"
+            placeholder={gs ? "Müşteri adı" : "Hastane adı"}
+          />
         </div>
         <div>
           <label className="field-label" htmlFor="contact_name">
@@ -192,7 +200,7 @@ export function RecordForm({
 
       <section>
         <div className="mb-2 flex items-center justify-between px-1">
-          <h2 className="text-[15px] font-semibold">Teklif verilen ürünler</h2>
+          <h2 className="text-[15px] font-semibold">{gs ? "Sipariş geçilen ürünler" : "Teklif verilen ürünler"}</h2>
           <span className="text-xs text-muted">{lines.filter((l) => l.product_name.trim()).length} kalem</span>
         </div>
         <div className="space-y-3">
@@ -231,7 +239,12 @@ export function RecordForm({
                     inputMode="decimal"
                     aria-label="Miktar"
                   />
-                  <select value={l.unit} onChange={(e) => update(l.key, { unit: e.target.value })} className="input w-28" aria-label="Birim">
+                  <select
+                    value={l.unit}
+                    onChange={(e) => update(l.key, { unit: e.target.value })}
+                    className="input w-28"
+                    aria-label="Birim"
+                  >
                     {UNITS.map((u) => (
                       <option key={u}>{u}</option>
                     ))}
@@ -246,7 +259,12 @@ export function RecordForm({
                     inputMode="decimal"
                     aria-label="Birim fiyat"
                   />
-                  <select value={l.currency} onChange={(e) => update(l.key, { currency: e.target.value })} className="input w-28" aria-label="Döviz">
+                  <select
+                    value={l.currency}
+                    onChange={(e) => update(l.key, { currency: e.target.value })}
+                    className="input w-28"
+                    aria-label="Döviz"
+                  >
                     {CURRENCIES.map((c) => (
                       <option key={c}>{c}</option>
                     ))}
