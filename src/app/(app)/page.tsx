@@ -65,9 +65,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     getRates(),
   ]);
 
-  // Genel Satış: tamamı teslim edilenler en alta (kendi içlerinde tarih sırası korunur).
+  // Doğrudan Temin ve Genel Satış: tamamı teslim edilenler en alta (kendi içlerinde tarih sırası korunur).
   const list =
-    f === "gs"
+    f === "gs" || f === "dt"
       ? [...(records ?? [])].sort((a, b) => Number(isFullyDelivered(a, progress)) - Number(isFullyDelivered(b, progress)))
       : records;
 
