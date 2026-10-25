@@ -88,8 +88,8 @@ export interface ManualShipment {
   direction: ManualDirection;
   party: string;
   product_details: string;
-  quantity: number | null;
-  unit: string | null;
+  quantity: number;
+  unit: string;
   due_date: string;
   note: string | null;
   status: ManualStatus;

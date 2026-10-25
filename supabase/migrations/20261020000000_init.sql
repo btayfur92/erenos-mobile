@@ -180,8 +180,8 @@ create table public.manual_shipments (
   direction public.manual_direction not null,
   party text not null check (length(trim(party)) > 0),
   product_details text not null check (length(trim(product_details)) > 0),
-  quantity numeric(14, 2) check (quantity is null or quantity > 0),  -- belli değilse boş
-  unit text,
+  quantity numeric(14, 2) not null check (quantity > 0),
+  unit text not null default 'Adet',
   due_date date not null default current_date,
   note text,
   status public.manual_status not null default 'bekliyor',
@@ -470,8 +470,7 @@ begin
 end;
 $$;
 
--- Elle eklenen sevkiyata teslim kaydı. Miktarı olmayan sevkiyat ya da p_quantity null ise kalanın tamamı teslim
--- sayılır. Kalan sıfıra inince sevkiyat tamamlanır. Dönen değer: true = tamamlandı.
+-- Elle eklenen sevkiyata teslim kaydı. p_quantity null ise kalanın tamamı teslim sayılır. Kalan sıfıra inince sevkiyat tamamlanır. Dönen değer: true = tamamlandı.
 create or replace function public.deliver_manual_shipment(p_id uuid, p_quantity numeric)
 returns boolean
 language plpgsql
@@ -488,19 +487,17 @@ begin
     raise exception 'Bu sevkiyat tamamlanmış ya da silinmiş.';
   end if;
 
-  if v_total is not null then
-    select coalesce(sum(quantity), 0) into v_done from manual_shipment_deliveries where shipment_id = p_id;
-    v_qty := coalesce(p_quantity, v_total - v_done);
-    if v_qty <= 0 then
-      raise exception 'Teslim miktarı sıfırdan büyük olmalıdır.';
-    end if;
-    if v_done + v_qty > v_total then
-      raise exception 'Teslim miktarı kalan miktarı aşıyor (kalan: %).', v_total - v_done;
-    end if;
-    insert into manual_shipment_deliveries (shipment_id, quantity) values (p_id, v_qty);
-    if v_done + v_qty < v_total then
-      return false;
-    end if;
+  select coalesce(sum(quantity), 0) into v_done from manual_shipment_deliveries where shipment_id = p_id;
+  v_qty := coalesce(p_quantity, v_total - v_done);
+  if v_qty <= 0 then
+    raise exception 'Teslim miktarı sıfırdan büyük olmalıdır.';
+  end if;
+  if v_done + v_qty > v_total then
+    raise exception 'Teslim miktarı kalan miktarı aşıyor (kalan: %).', v_total - v_done;
+  end if;
+  insert into manual_shipment_deliveries (shipment_id, quantity) values (p_id, v_qty);
+  if v_done + v_qty < v_total then
+    return false;
   end if;
 
   update manual_shipments set status = 'tamamlandi', completed_at = now(), completed_by = auth.uid() where id = p_id;
@@ -517,7 +514,7 @@ declare
   v_done numeric;
 begin
   select coalesce(sum(quantity), 0) into v_done from public.manual_shipment_deliveries where shipment_id = new.id;
-  if v_done > 0 and (new.quantity is null or new.quantity < v_done) then
+  if new.quantity < v_done then
     raise exception 'Bu sevkiyattan % teslim edildi. Miktar bunun altına inemez.', v_done;
   end if;
   return new;

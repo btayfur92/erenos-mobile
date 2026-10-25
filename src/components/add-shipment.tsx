@@ -37,7 +37,7 @@ export function ManualShipmentSheet({ open, onClose, item }: { open: boolean; on
           direction: item.direction,
           party: item.party,
           product_details: item.product_details,
-          quantity: item.quantity !== null ? String(item.quantity).replace(".", ",") : "",
+          quantity: String(item.quantity).replace(".", ","),
           unit: item.unit ?? "Adet",
           due_date: item.due_date,
           note: item.note ?? "",
@@ -71,12 +71,12 @@ export function ManualShipmentSheet({ open, onClose, item }: { open: boolean; on
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    const quantity = form.quantity.trim() ? parseNum(form.quantity) : null;
-    if (quantity !== null && !(quantity > 0)) {
+    const quantity = parseNum(form.quantity);
+    if (!(quantity > 0)) {
       setForm((f) => ({ ...f, quantity: "" }));
       setBadQty(true);
       document.getElementById("ms_qty")?.focus();
-      return setError("Miktar sıfırdan büyük olmalı ya da boş bırakılmalı.");
+      return setError("Miktarı girin (sıfırdan büyük olmalı).");
     }
     start(async () => {
       const input = { ...form, quantity };
@@ -149,7 +149,7 @@ export function ManualShipmentSheet({ open, onClose, item }: { open: boolean; on
         <div className="grid grid-cols-[1fr_8rem] gap-3">
           <div>
             <label className="field-label" htmlFor="ms_qty">
-              Miktar <span className="font-normal text-muted/70">(isteğe bağlı)</span>
+              Miktar
             </label>
             <input
               id="ms_qty"
@@ -158,6 +158,7 @@ export function ManualShipmentSheet({ open, onClose, item }: { open: boolean; on
               inputMode="decimal"
               className="input"
               aria-invalid={badQty || undefined}
+              required
             />
           </div>
           <div>

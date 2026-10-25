@@ -236,7 +236,7 @@ export interface ManualShipmentInput {
   direction: ManualDirection;
   party: string;
   product_details: string;
-  quantity: number | null;
+  quantity: number;
   unit: string;
   due_date: string;
   note: string;
@@ -247,7 +247,7 @@ function checkManual(input: ManualShipmentInput): string | null {
   const gelecek = input.direction === "gelecek";
   if (!input.party.trim()) return gelecek ? "Tedarikçi adı gerekli." : "Hastane / alıcı adı gerekli.";
   if (!input.product_details.trim()) return "Ürün detayını girin.";
-  if (input.quantity !== null && !(input.quantity > 0)) return "Miktar sıfırdan büyük olmalı ya da boş bırakılmalı.";
+  if (!(input.quantity > 0)) return "Miktarı girin (sıfırdan büyük olmalı).";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.due_date)) return gelecek ? "Beklenen tarihi seçin." : "Sevk tarihini seçin.";
   return null;
 }
@@ -256,7 +256,7 @@ const manualFields = (input: ManualShipmentInput) => ({
   party: input.party.trim(),
   product_details: input.product_details.trim(),
   quantity: input.quantity,
-  unit: input.quantity !== null ? input.unit : null,
+  unit: input.unit,
   due_date: input.due_date,
   note: input.note.trim() || null,
 });
@@ -295,7 +295,7 @@ export async function updateManualShipment(id: string, input: ManualShipmentInpu
 }
 
 /**
- * Gelecekte "Teslim alındı", gidecekte "Teslim edildi". Miktarı girilmiş sevkiyatta parça teslim edilebilir
+ * Gelecekte "Teslim alındı", gidecekte "Teslim edildi". Parça teslim edilebilir
  * (quantity); kalan sıfıra inince sevkiyat tamamlanır. quantity null ise kalanın tamamı teslim sayılır.
  */
 export async function completeManualShipment(id: string, quantity: number | null = null): Promise<ActionResult> {
