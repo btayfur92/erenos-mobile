@@ -97,6 +97,16 @@ export interface ManualShipment {
   completed_by: string | null;
   created_by: string | null;
   created_at: string;
+  manual_shipment_deliveries?: ManualDelivery[];
+}
+
+/** Elle eklenen sevkiyatta parça teslim. */
+export interface ManualDelivery {
+  id: string;
+  shipment_id: string;
+  quantity: number;
+  delivered_by: string | null;
+  delivered_at: string;
 }
 
 /** Hastane ziyaretinde alınan görüşme notu. */

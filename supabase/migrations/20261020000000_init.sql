@@ -193,6 +193,18 @@ create table public.manual_shipments (
 
 create index manual_shipments_status_idx on public.manual_shipments (status, due_date);
 
+-- Elle eklenen sevkiyatta parça parça teslim (miktarı girilmiş sevkiyatlar için).
+-- Kalan = manual_shipments.quantity - sum(quantity); kalan sıfıra inince sevkiyat tamamlanır.
+create table public.manual_shipment_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  shipment_id uuid not null references public.manual_shipments (id) on delete cascade,
+  quantity numeric(14, 2) not null check (quantity > 0),
+  delivered_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  delivered_at timestamptz not null default now()
+);
+
+create index manual_shipment_deliveries_shipment_idx on public.manual_shipment_deliveries (shipment_id, delivered_at);
+
 -- Görüşmeler: çalışanların hastane ziyaret notları. Herkes görür, herkes düzeltebilir.
 create table public.meetings (
   id uuid primary key default gen_random_uuid(),
@@ -458,6 +470,63 @@ begin
 end;
 $$;
 
+-- Elle eklenen sevkiyata teslim kaydı. Miktarı olmayan sevkiyat ya da p_quantity null ise kalanın tamamı teslim
+-- sayılır. Kalan sıfıra inince sevkiyat tamamlanır. Dönen değer: true = tamamlandı.
+create or replace function public.deliver_manual_shipment(p_id uuid, p_quantity numeric)
+returns boolean
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_total numeric;
+  v_done numeric;
+  v_qty numeric;
+begin
+  select quantity into v_total from manual_shipments where id = p_id and status = 'bekliyor' for update;
+  if not found then
+    raise exception 'Bu sevkiyat tamamlanmış ya da silinmiş.';
+  end if;
+
+  if v_total is not null then
+    select coalesce(sum(quantity), 0) into v_done from manual_shipment_deliveries where shipment_id = p_id;
+    v_qty := coalesce(p_quantity, v_total - v_done);
+    if v_qty <= 0 then
+      raise exception 'Teslim miktarı sıfırdan büyük olmalıdır.';
+    end if;
+    if v_done + v_qty > v_total then
+      raise exception 'Teslim miktarı kalan miktarı aşıyor (kalan: %).', v_total - v_done;
+    end if;
+    insert into manual_shipment_deliveries (shipment_id, quantity) values (p_id, v_qty);
+    if v_done + v_qty < v_total then
+      return false;
+    end if;
+  end if;
+
+  update manual_shipments set status = 'tamamlandi', completed_at = now(), completed_by = auth.uid() where id = p_id;
+  return true;
+end;
+$$;
+
+-- Düzeltmede miktar, teslim edilmiş miktarın altına inemez.
+create or replace function public.check_manual_shipment_qty()
+returns trigger
+language plpgsql
+as $$
+declare
+  v_done numeric;
+begin
+  select coalesce(sum(quantity), 0) into v_done from public.manual_shipment_deliveries where shipment_id = new.id;
+  if v_done > 0 and (new.quantity is null or new.quantity < v_done) then
+    raise exception 'Bu sevkiyattan % teslim edildi. Miktar bunun altına inemez.', v_done;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger manual_shipments_qty before update of quantity on public.manual_shipments
+  for each row execute function public.check_manual_shipment_qty();
+
 -- Sevkiyat talebi. p_items: [{line_id, quantity}]
 create or replace function public.create_shipment(p_record_id uuid, p_note text, p_items jsonb, p_planned_date date default null)
 returns uuid
@@ -508,6 +577,7 @@ alter table public.call_logs enable row level security;
 alter table public.shipments enable row level security;
 alter table public.shipment_items enable row level security;
 alter table public.manual_shipments enable row level security;
+alter table public.manual_shipment_deliveries enable row level security;
 alter table public.meetings enable row level security;
 alter table public.push_subscriptions enable row level security;
 
@@ -525,6 +595,8 @@ create policy "call_logs_all" on public.call_logs
 create policy "shipments_all" on public.shipments
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 create policy "shipment_items_all" on public.shipment_items
+  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+create policy "manual_shipment_deliveries_all" on public.manual_shipment_deliveries
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 create policy "manual_shipments_all" on public.manual_shipments
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());

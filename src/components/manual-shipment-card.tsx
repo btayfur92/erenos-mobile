@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Sheet } from "@/components/sheet";
 import { CheckCircle2, Loader2, PackageCheck, PackageOpen, Pencil, Truck, X } from "lucide-react";
 import { cancelManualShipment, completeManualShipment } from "@/app/(app)/actions";
 import { ManualShipmentSheet } from "@/components/add-shipment";
@@ -19,6 +20,12 @@ export function ManualShipmentCard({ item, names }: { item: ManualShipment; name
   const late = !done && item.due_date < todayIstanbul();
   const doneLabel = gelecek ? "Teslim alındı" : "Teslim edildi";
   const kind = gelecek ? "Gelecek" : "Gidecek";
+  const [delivering, setDelivering] = useState(false);
+  // Parça teslimler: miktarı girilmiş sevkiyatta kalan, sevkiyat programında görünür.
+  const deliveries = [...(item.manual_shipment_deliveries ?? [])].sort((a, b) => a.delivered_at.localeCompare(b.delivered_at));
+  const delivered = deliveries.reduce((t, d) => t + Number(d.quantity), 0);
+  const total = item.quantity !== null ? Number(item.quantity) : null;
+  const remaining = total !== null ? Math.max(total - delivered, 0) : null;
 
   const act = (fn: () => ReturnType<typeof completeManualShipment>) =>
     start(async () => {
@@ -76,6 +83,33 @@ export function ManualShipmentCard({ item, names }: { item: ManualShipment; name
           </b>
         )}
       </div>
+      {total !== null && delivered > 0 && (
+        <div className="mt-2 space-y-1.5">
+          <div className="flex h-1.5 overflow-hidden rounded-full bg-line">
+            <div className="bg-emerald-500" style={{ width: `${Math.min((delivered / total) * 100, 100)}%` }} />
+          </div>
+          <p className="flex justify-between text-[13px] tabular-nums">
+            <span className="text-emerald-700">
+              {gelecek ? "Teslim alınan" : "Teslim edilen"}: <b className="font-semibold">{formatQty(delivered)}</b>
+            </span>
+            {!done && (
+              <span className="text-accent-600">
+                Kalan: <b className="font-semibold">{formatQty(remaining ?? 0)}</b> {item.unit}
+              </span>
+            )}
+          </p>
+          {(deliveries.length > 1 || !done) && (
+            <ul className="space-y-0.5 text-[12px] text-muted">
+              {deliveries.map((d) => (
+                <li key={d.id}>
+                  {formatQty(d.quantity)} {item.unit} · {formatDateTime(d.delivered_at)}
+                  {d.delivered_by && names?.[d.delivered_by] ? ` · ${names[d.delivered_by]}` : ""}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {item.note && <p className="mt-2 text-[13px] text-muted">{item.note}</p>}
 
       {done ? (
@@ -93,12 +127,95 @@ export function ManualShipmentCard({ item, names }: { item: ManualShipment; name
           </button>
         </div>
       ) : (
-        <button className="btn-primary mt-3 w-full py-2.5" disabled={pending} onClick={() => act(() => completeManualShipment(item.id))}>
+        <button
+          className="btn-primary mt-3 w-full py-2.5"
+          disabled={pending}
+          onClick={() => (total !== null ? setDelivering(true) : act(() => completeManualShipment(item.id)))}
+        >
           {pending ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={17} />} {doneLabel}
         </button>
       )}
       {error && <p className="mt-2 text-sm font-medium text-accent-700">{error}</p>}
       {!done && <ManualShipmentSheet open={editing} onClose={() => setEditing(false)} item={item} />}
+      {!done && remaining !== null && (
+        <DeliverSheet
+          key={String(delivering)}
+          open={delivering}
+          onClose={() => setDelivering(false)}
+          id={item.id}
+          remaining={remaining}
+          unit={item.unit ?? ""}
+          title={gelecek ? "Teslim alınan miktar" : "Teslim edilen miktar"}
+        />
+      )}
     </div>
+  );
+}
+
+function parseNum(v: string) {
+  const s = v.trim().replace(/\s/g, "");
+  if (!s) return NaN;
+  return Number(s.includes(",") ? s.replace(/\./g, "").replace(",", ".") : s);
+}
+
+/** Parça teslim: bu sefer teslim edilen miktar. Kalanın tamamı girilirse sevkiyat tamamlanır. */
+function DeliverSheet({
+  open,
+  onClose,
+  id,
+  remaining,
+  unit,
+  title,
+}: {
+  open: boolean;
+  onClose: () => void;
+  id: string;
+  remaining: number;
+  unit: string;
+  title: string;
+}) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string>();
+  const [qty, setQty] = useState(String(remaining).replace(".", ","));
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const q = parseNum(qty);
+    if (!(q > 0)) return setError("Miktar sıfırdan büyük olmalı.");
+    if (q > remaining) return setError(`Kalan miktardan fazla girilemez (kalan: ${formatQty(remaining)} ${unit}).`);
+    start(async () => {
+      const r = await completeManualShipment(id, q);
+      if (!r.ok) return setError(r.error);
+      onClose();
+    });
+  }
+
+  return (
+    <Sheet open={open} onClose={onClose} title={title}>
+      <form onSubmit={submit} className="space-y-4">
+        <p className="text-sm text-muted">
+          Kalan <b className="text-ink">{formatQty(remaining)}</b> {unit}. Bir kısmı teslim edildiyse o miktarı girin; kalan sevkiyat
+          programında görünmeye devam eder.
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            inputMode="decimal"
+            className="input flex-1"
+            aria-label="Teslim miktarı"
+            autoFocus
+          />
+          <span className="w-14 text-[14px] text-muted">{unit}</span>
+          <button type="button" onClick={() => setQty(String(remaining).replace(".", ","))} className="btn-secondary px-3 py-2 text-[13px]">
+            Tamamı
+          </button>
+        </div>
+        {error && <p className="rounded-xl bg-accent-50 px-3.5 py-2.5 text-sm font-medium text-accent-700">{error}</p>}
+        <button className="btn-primary w-full" disabled={pending}>
+          {pending ? <Loader2 size={18} className="animate-spin" /> : <PackageCheck size={18} />} Kaydet
+        </button>
+      </form>
+    </Sheet>
   );
 }

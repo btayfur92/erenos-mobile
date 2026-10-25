@@ -294,19 +294,29 @@ export async function updateManualShipment(id: string, input: ManualShipmentInpu
   return { ok: true, id };
 }
 
-/** Gelecekte "Teslim alındı", gidecekte "Teslim edildi". */
-export async function completeManualShipment(id: string): Promise<ActionResult> {
+/**
+ * Gelecekte "Teslim alındı", gidecekte "Teslim edildi". Miktarı girilmiş sevkiyatta parça teslim edilebilir
+ * (quantity); kalan sıfıra inince sevkiyat tamamlanır. quantity null ise kalanın tamamı teslim sayılır.
+ */
+export async function completeManualShipment(id: string, quantity: number | null = null): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
-  const { data, error } = await supabase
-    .from("manual_shipments")
-    .update({ status: "tamamlandi", completed_at: new Date().toISOString(), completed_by: user.id })
-    .eq("id", id)
-    .eq("status", "bekliyor")
-    .select("direction, party, product_details")
-    .single();
+  if (quantity !== null && !(quantity > 0)) return { ok: false, error: "Teslim miktarı sıfırdan büyük olmalı." };
+  const { data: done, error } = await supabase.rpc("deliver_manual_shipment", { p_id: id, p_quantity: quantity });
   if (error) return fail(error);
-  const verb = data.direction === "gelecek" ? "teslim alındı" : "teslim edildi";
-  notify({ title: `Sevkiyat ${verb}: ${data.party}`, body: data.product_details, url: "/sevkiyat?d=tamam" }, user.id);
+  const { data } = await supabase.from("manual_shipments").select("direction, party, product_details, unit").eq("id", id).single();
+  if (data) {
+    const verb = data.direction === "gelecek" ? "teslim alındı" : "teslim edildi";
+    notify(
+      done
+        ? { title: `Sevkiyat ${verb}: ${data.party}`, body: data.product_details, url: "/sevkiyat?d=tamam" }
+        : {
+            title: `Sevkiyat kısmen ${verb}: ${data.party}`,
+            body: `${quantity !== null ? `${formatQty(quantity)} ${data.unit ?? ""} · ` : ""}${data.product_details}`,
+            url: "/sevkiyat",
+          },
+      user.id,
+    );
+  }
   refresh();
   return { ok: true };
 }

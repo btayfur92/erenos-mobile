@@ -38,14 +38,14 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
     done
       ? supabase
           .from("manual_shipments")
-          .select("*")
+          .select("*, manual_shipment_deliveries(*)")
           .eq("status", "tamamlandi")
           .order("completed_at", { ascending: false })
           .limit(200)
           .returns<ManualShipment[]>()
       : supabase
           .from("manual_shipments")
-          .select("*")
+          .select("*, manual_shipment_deliveries(*)")
           .eq("status", "bekliyor")
           .order("due_date", { ascending: true })
           .order("created_at", { ascending: true })
