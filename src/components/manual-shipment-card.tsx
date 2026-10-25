@@ -177,12 +177,14 @@ function DeliverSheet({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [qty, setQty] = useState(String(remaining).replace(".", ","));
+  const [bad, setBad] = useState(false);
+  const reject = (msg: string) => (setQty(""), setBad(true), setError(msg));
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const q = parseNum(qty);
-    if (!(q > 0)) return setError("Miktar sıfırdan büyük olmalı.");
-    if (q > remaining) return setError(`Kalan miktardan fazla girilemez (kalan: ${formatQty(remaining)} ${unit}).`);
+    if (!(q > 0)) return reject("Miktar sıfırdan büyük olmalı.");
+    if (q > remaining) return reject(`Kalan miktardan fazla girilemez (kalan: ${formatQty(remaining)} ${unit}).`);
     start(async () => {
       const r = await completeManualShipment(id, q);
       if (!r.ok) return setError(r.error);
@@ -200,7 +202,8 @@ function DeliverSheet({
         <div className="flex items-center gap-2">
           <input
             value={qty}
-            onChange={(e) => setQty(e.target.value)}
+            onChange={(e) => (setBad(false), setQty(e.target.value))}
+            aria-invalid={bad || undefined}
             inputMode="decimal"
             className="input flex-1"
             aria-label="Teslim miktarı"

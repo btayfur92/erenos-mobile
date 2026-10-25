@@ -38,6 +38,12 @@ export function RecordForm({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
+  // Hatalı alan: kırmızı çerçeveyle işaretlenip temizlenir, diğer girilenler yerinde kalır.
+  const [bad, setBad] = useState<string>();
+  const invalid = (k: string) => (bad === k ? { "aria-invalid": true as const } : {});
+  const touched = (k: string) => {
+    if (bad === k) setBad(undefined);
+  };
   const [type, setType] = useState<RecordType>(initial?.type ?? "dogrudan_temin");
   const [phoneMsg, setPhoneMsg] = useState("");
   const gs = type === "genel_siparis";
@@ -80,13 +86,26 @@ export function RecordForm({
         })),
     };
     if (input.contact_phone.trim() && !normalizePhone(input.contact_phone)) {
+      const el = document.getElementById("contact_phone") as HTMLInputElement | null;
+      if (el) {
+        el.value = "";
+        el.focus();
+      }
+      setPhoneMsg("");
+      setBad("phone");
       setError(PHONE_ERROR);
       return;
     }
-    if (input.lines.some((l) => Number.isNaN(l.quantity) || Number.isNaN(l.unit_price))) {
-      setError("Miktar ve fiyat alanlarına geçerli sayı girin.");
+    const wrong = lines.find((l) => l.product_name.trim() && (!(parseNum(l.quantity) > 0) || !(parseNum(l.unit_price) >= 0)));
+    if (wrong) {
+      const field = parseNum(wrong.quantity) > 0 ? "p" : "q";
+      update(wrong.key, field === "q" ? { quantity: "" } : { unit_price: "" });
+      setBad(`${field}-${wrong.key}`);
+      document.getElementById(`${field}-${wrong.key}`)?.focus();
+      setError(field === "q" ? "Miktar sıfırdan büyük bir sayı olmalı." : "Birim fiyata geçerli bir sayı girin.");
       return;
     }
+    setBad(undefined);
     setError(undefined);
     start(async () => {
       const res = await saveRecord(input);
@@ -170,7 +189,8 @@ export function RecordForm({
               placeholder="05xx veya 0312 …"
               autoComplete="off"
               maxLength={20}
-              onChange={(e) => setPhoneMsg(phoneHint(e.target.value, false))}
+              onChange={(e) => (touched("phone"), setPhoneMsg(phoneHint(e.target.value, false)))}
+              {...invalid("phone")}
               onBlur={(e) => {
                 const p = normalizePhone(e.target.value);
                 if (p) e.target.value = p;
@@ -232,8 +252,10 @@ export function RecordForm({
                 />
                 <div className="grid grid-cols-[1fr_auto] gap-2">
                   <input
+                    id={`q-${l.key}`}
+                    {...invalid(`q-${l.key}`)}
                     value={l.quantity}
-                    onChange={(e) => update(l.key, { quantity: e.target.value })}
+                    onChange={(e) => (touched(`q-${l.key}`), update(l.key, { quantity: e.target.value }))}
                     className="input"
                     placeholder="Miktar"
                     inputMode="decimal"
@@ -252,8 +274,10 @@ export function RecordForm({
                 </div>
                 <div className="grid grid-cols-[1fr_auto] gap-2">
                   <input
+                    id={`p-${l.key}`}
+                    {...invalid(`p-${l.key}`)}
                     value={l.unit_price}
-                    onChange={(e) => update(l.key, { unit_price: e.target.value })}
+                    onChange={(e) => (touched(`p-${l.key}`), update(l.key, { unit_price: e.target.value }))}
                     className="input"
                     placeholder="Birim fiyat"
                     inputMode="decimal"

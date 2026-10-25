@@ -61,7 +61,7 @@ textarea {
 }
 
 @utility input {
-  @apply block w-full rounded-xl border border-line bg-white px-3.5 py-3 text-[16px] text-ink outline-none transition placeholder:text-muted/60 focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
+  @apply block w-full rounded-xl border border-line bg-white px-3.5 py-3 text-[16px] text-ink outline-none transition placeholder:text-muted/60 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 aria-[invalid=true]:border-accent-500! aria-[invalid=true]:ring-4 aria-[invalid=true]:ring-accent-100!;
 }
 
 @utility btn {

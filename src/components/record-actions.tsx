@@ -203,6 +203,13 @@ function ResultSheet({
   const shipped = (lineId: string) => Number(progress[lineId]?.in_shipment ?? 0) + Number(progress[lineId]?.delivered ?? 0);
   // Genel satışta sipariş zaten alınmıştır: reddetme yok, onay seçili gelir.
   const gs = record.type === "genel_siparis";
+  // Hatalı miktar alanı: kırmızı çerçeveyle işaretlenip temizlenir, diğer kalemler yerinde kalır.
+  const [bad, setBad] = useState<string>();
+  const reject = (lineId: string, msg: string) => {
+    setSel((x) => ({ ...x, [lineId]: { ...x[lineId], qty: "" } }));
+    setBad(lineId);
+    setError(msg);
+  };
 
   function submit() {
     if (mode === "red") {
@@ -211,10 +218,12 @@ function ResultSheet({
     }
     const chosen = lines.filter((l) => sel[l.id]?.on).map((l) => ({ line_id: l.id, approved_qty: parseNum(sel[l.id].qty) }));
     if (!chosen.length) return setError("Onaylanan en az bir kalem seçin.");
-    if (chosen.some((c) => !(c.approved_qty > 0))) return setError("Onaylanan miktarları kontrol edin.");
+    const zero = chosen.find((c) => !(c.approved_qty > 0));
+    if (zero) return reject(zero.line_id, "Onaylanan miktar sıfırdan büyük olmalı.");
     const blocked = lines.find((l) => shipped(l.id) > (chosen.find((c) => c.line_id === l.id)?.approved_qty ?? 0));
     if (blocked) {
-      return setError(
+      return reject(
+        blocked.id,
         `${blocked.product_name} için ${formatQty(shipped(blocked.id))} ${blocked.unit} sevkiyata aktarılmış. Onaylanan miktar bunun altına inemez.`,
       );
     }
@@ -274,7 +283,11 @@ function ResultSheet({
                       <span className="text-[13px] text-muted">Onaylanan</span>
                       <input
                         value={s.qty}
-                        onChange={(e) => setSel((x) => ({ ...x, [l.id]: { ...s, qty: e.target.value } }))}
+                        onChange={(e) => (
+                          bad === l.id && setBad(undefined),
+                          setSel((x) => ({ ...x, [l.id]: { ...s, qty: e.target.value } }))
+                        )}
+                        aria-invalid={bad === l.id || undefined}
                         inputMode="decimal"
                         className="input w-28 py-2 text-right"
                         aria-label={`${l.product_name} onaylanan miktar`}
@@ -331,6 +344,7 @@ function ShipmentSheet({
   const [qty, setQty] = useState<Record<string, string>>({});
   const [note, setNote] = useState("");
   const [planned, setPlanned] = useState(todayIstanbul());
+  const [bad, setBad] = useState<string>(); // hatalı miktar alanı: kırmızı çerçeve, yalnızca o alan temizlenir
 
   function submit() {
     const items = shippable
@@ -338,7 +352,11 @@ function ShipmentSheet({
       .filter((i) => !Number.isNaN(i.quantity) && i.quantity > 0);
     if (!items.length) return setError("Sevk edilecek miktarı en az bir kalem için girin.");
     for (const i of items) {
-      if (i.quantity > Number(progress[i.line_id].remaining)) return setError("Girilen miktar kalan onaylı miktardan fazla olamaz.");
+      if (i.quantity > Number(progress[i.line_id].remaining)) {
+        setQty((x) => ({ ...x, [i.line_id]: "" }));
+        setBad(i.line_id);
+        return setError("Girilen miktar kalan onaylı miktardan fazla olamaz.");
+      }
     }
     run(
       () => createShipment(record.id, note, items, planned),
@@ -364,7 +382,8 @@ function ShipmentSheet({
               <div className="mt-2.5 flex items-center gap-2">
                 <input
                   value={qty[l.id] ?? ""}
-                  onChange={(e) => setQty((x) => ({ ...x, [l.id]: e.target.value }))}
+                  onChange={(e) => (bad === l.id && setBad(undefined), setQty((x) => ({ ...x, [l.id]: e.target.value })))}
+                  aria-invalid={bad === l.id || undefined}
                   inputMode="decimal"
                   placeholder="İstenen"
                   className="input flex-1 py-2"

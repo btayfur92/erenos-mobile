@@ -30,6 +30,7 @@ export function AddShipment() {
 export function ManualShipmentSheet({ open, onClose, item }: { open: boolean; onClose: () => void; item?: ManualShipment }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
+  const [badQty, setBadQty] = useState(false); // hatalı miktar: kırmızı çerçeve, yalnızca o alan temizlenir
   const initial = () =>
     item
       ? {
@@ -64,13 +65,19 @@ export function ManualShipmentSheet({ open, onClose, item }: { open: boolean; on
     if (open) {
       setForm(initial());
       setError(undefined);
+      setBadQty(false);
     }
   }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const quantity = form.quantity.trim() ? parseNum(form.quantity) : null;
-    if (quantity !== null && !(quantity > 0)) return setError("Miktar sıfırdan büyük olmalı ya da boş bırakılmalı.");
+    if (quantity !== null && !(quantity > 0)) {
+      setForm((f) => ({ ...f, quantity: "" }));
+      setBadQty(true);
+      document.getElementById("ms_qty")?.focus();
+      return setError("Miktar sıfırdan büyük olmalı ya da boş bırakılmalı.");
+    }
     start(async () => {
       const input = { ...form, quantity };
       const r = item ? await updateManualShipment(item.id, input) : await createManualShipment(input);
@@ -144,7 +151,14 @@ export function ManualShipmentSheet({ open, onClose, item }: { open: boolean; on
             <label className="field-label" htmlFor="ms_qty">
               Miktar <span className="font-normal text-muted/70">(isteğe bağlı)</span>
             </label>
-            <input id="ms_qty" value={form.quantity} onChange={set("quantity")} inputMode="decimal" className="input" />
+            <input
+              id="ms_qty"
+              value={form.quantity}
+              onChange={(e) => (setBadQty(false), set("quantity")(e))}
+              inputMode="decimal"
+              className="input"
+              aria-invalid={badQty || undefined}
+            />
           </div>
           <div>
             <label className="field-label" htmlFor="ms_unit">
