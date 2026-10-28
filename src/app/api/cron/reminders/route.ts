@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Hatırlatmalar: aranmamış doğrudan teminler, istenip henüz gönderilmemiş numuneler (DT ve ihale),
- * yaklaşan ihaleler (ihale saatinden 3 gün önce 2 saatte bir, son 24 saatte saatte bir) ve son ayındaki
+ * yaklaşan ihaleler (ihale saatinden 3 gün, DMO ihalesinde 2 gün önce 2 saatte bir, son 24 saatte saatte bir) ve son ayındaki
  * ihale sözleşmeleri (her gün 14:00'te bir kez) mesai saatlerinde herkese gider. Kişiye özel anımsatıcılar yalnızca
  * eklenen kişilere, kişinin ayarına göre mesai saatlerinde ya da her gün 08:00–22:00 arasında gider.
  * Supabase pg_cron (supabase/cron.sql) her gün 08:00–22:00 arasında 15 dakikada bir çağırır.
@@ -85,14 +85,15 @@ async function handle(request: NextRequest) {
     );
   }
 
-  // Yaklaşan ihaleler: ihale saatinden 72 saat önce başlar (2 saatte bir), son 24 saatte saatte bir; ihale saatinde durur.
+  // Yaklaşan ihaleler: ihale saatinden 72 saat (DMO ihalesinde 48 saat) önce başlar (2 saatte bir), son 24 saatte saatte bir;
+  // ihale saatinde durur. DMO'da teminat adımı yoktur (süresiz teminat).
   const today = todayIstanbul();
   const addDays = (n: number) => new Date(Date.parse(today) + n * 86_400_000).toISOString().slice(0, 10);
   const nowMs = Date.now();
   const { data: tenders, error: tenderError } = await admin
     .from("records")
-    .select("id, hospital, file_no, record_date, tender_time, guarantee_paid_at, prices_entered_at, last_reminded_at")
-    .eq("type", "ihale_siparisi")
+    .select("id, type, hospital, file_no, record_date, tender_time, guarantee_paid_at, prices_entered_at, last_reminded_at")
+    .in("type", ["ihale_siparisi", "dmo_ihalesi"])
     .eq("status", "ihale_bekliyor")
     .gte("record_date", today)
     .lte("record_date", addDays(3))
@@ -101,19 +102,24 @@ async function handle(request: NextRequest) {
   const DAY_MS = 24 * 60 * 60 * 1000;
   const tenderDue = (tenders ?? []).filter((t) => {
     const left = tenderAt(t.record_date, t.tender_time) - nowMs;
-    if (left <= 0 || left > 3 * DAY_MS) return false;
+    if (left <= 0 || left > (t.type === "dmo_ihalesi" ? 2 : 3) * DAY_MS) return false;
     const interval = left <= DAY_MS ? 60 * 60 * 1000 : REMINDER_INTERVAL_MS;
     return !t.last_reminded_at || Date.parse(t.last_reminded_at) <= nowMs - interval + 60_000;
   });
   for (const t of tenderDue) {
     const lastDay = tenderAt(t.record_date, t.tender_time) - nowMs <= DAY_MS;
-    const missing = [!t.guarantee_paid_at && "teminat yatırılmadı", !t.prices_entered_at && "fiyatlarımız girilmedi"].filter(Boolean);
+    const dmo = t.type === "dmo_ihalesi";
+    const missing = [!dmo && !t.guarantee_paid_at && "teminat yatırılmadı", !t.prices_entered_at && "fiyatlarımız girilmedi"].filter(
+      Boolean,
+    );
     payloads.push({
-      title: `${tenderCountdown(t.record_date, today, t.tender_time, nowMs)}: ${t.hospital}`,
+      title: `${dmo ? "DMO · " : ""}${tenderCountdown(t.record_date, today, t.tender_time, nowMs)}: ${t.hospital}`,
       body: lastDay
         ? missing.length
           ? `Son gün: ${missing.join(", ")}.`
-          : "Teminat yatırıldı, fiyatlar girildi. Evrakları son kez kontrol edin."
+          : dmo
+            ? "Fiyatlar girildi. Evrakları son kez kontrol edin."
+            : "Teminat yatırıldı, fiyatlar girildi. Evrakları son kez kontrol edin."
         : `${t.file_no ? `${t.file_no} · ` : ""}Şartname ve evrakları inceleyin, gelen evrakı hastaneye gönderin.`,
       url: `/kayit/${t.id}`,
       tag: `ihale-${t.id}`,

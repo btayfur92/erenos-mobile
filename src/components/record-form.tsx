@@ -4,11 +4,20 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { saveRecord, type LineInput, type RecordInput } from "@/app/(app)/actions";
-import { CURRENCIES, UNITS, type RecordType } from "@/lib/types";
+import { CURRENCIES, isTenderType, UNITS, type RecordType } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { normalizePhone, PHONE_ERROR, phoneHint } from "@/lib/phone";
 
-type LineDraft = { key: number; id?: string; product_name: string; quantity: string; unit: string; unit_price: string; currency: string };
+type LineDraft = {
+  key: number;
+  id?: string;
+  product_name: string;
+  quantity: string;
+  unit: string;
+  unit_price: string;
+  currency: string;
+  region: string;
+};
 
 let keySeq = 1;
 const emptyLine = (currency = "TRY"): LineDraft => ({
@@ -18,6 +27,7 @@ const emptyLine = (currency = "TRY"): LineDraft => ({
   unit: "Adet",
   unit_price: "",
   currency,
+  region: "",
 });
 
 /** "1.250,50" ve "1250.50" gibi girişleri sayıya çevirir. */
@@ -31,9 +41,12 @@ function parseNum(v: string) {
 export function RecordForm({
   initial,
   lockedType,
+  lockedLines,
 }: {
   initial?: Partial<Omit<RecordInput, "lines">> & { lines?: LineInput[] };
   lockedType?: boolean;
+  /** Sonuçlanmış ihale: kalem eklenip silinemez, miktar değişmez (sonuç adımından değişir); ad, birim, bölge düzeltilebilir. */
+  lockedLines?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -47,7 +60,8 @@ export function RecordForm({
   const [type, setType] = useState<RecordType>(initial?.type ?? "dogrudan_temin");
   const [phoneMsg, setPhoneMsg] = useState("");
   const gs = type === "genel_siparis";
-  const tender = type === "ihale_siparisi"; // ihalede fiyat bu formda girilmez
+  const tender = isTenderType(type); // ihale ve DMO ihalesinde fiyat bu formda girilmez
+  const dmo = type === "dmo_ihalesi"; // DMO: her kalemin bölgesi girilir
   const [lines, setLines] = useState<LineDraft[]>(
     initial?.lines?.length
       ? initial.lines.map((l) => ({
@@ -58,6 +72,7 @@ export function RecordForm({
           unit: l.unit,
           unit_price: l.unit_price === null ? "" : String(l.unit_price).replace(".", ","),
           currency: l.currency,
+          region: l.region ?? "",
         }))
       : [emptyLine()],
   );
@@ -87,6 +102,7 @@ export function RecordForm({
           unit: l.unit,
           unit_price: tender ? null : parseNum(l.unit_price),
           currency: l.currency,
+          region: dmo ? l.region.trim() : undefined,
         })),
     };
     if (input.contact_phone.trim() && !normalizePhone(input.contact_phone)) {
@@ -98,6 +114,13 @@ export function RecordForm({
       setPhoneMsg("");
       setBad("phone");
       setError(PHONE_ERROR);
+      return;
+    }
+    const noRegion = dmo && lines.find((l) => l.product_name.trim() && !l.region.trim());
+    if (noRegion) {
+      setBad(`r-${noRegion.key}`);
+      document.getElementById(`r-${noRegion.key}`)?.focus();
+      setError("Her ürün için bölge girin.");
       return;
     }
     const wrong = lines.find((l) => l.product_name.trim() && (!(parseNum(l.quantity) > 0) || (!tender && !(parseNum(l.unit_price) >= 0))));
@@ -116,18 +139,19 @@ export function RecordForm({
       if (!res.ok) return setError(res.error);
       // Yeni kayıttan sonra listeye dön: doğrudan temin ve genel satış Gündem'e, yaklaşık maliyet kendi sekmesine düşer.
       if (initial?.id) router.replace(`/kayit/${res.id}`);
-      else router.replace(type === "yaklasik_maliyet" ? "/?f=ym" : tender ? "/?f=ihale" : "/");
+      else router.replace(type === "yaklasik_maliyet" ? "/?f=ym" : dmo ? "/?f=dmo" : tender ? "/?f=ihale" : "/");
     });
   }
 
   return (
     <form onSubmit={onSubmit} className="space-y-5">
       {!lockedType && (
-        <div className="grid grid-cols-4 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
+        <div className="grid grid-cols-3 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
           {(
             [
               ["dogrudan_temin", "Doğrudan Temin"],
               ["ihale_siparisi", "İhale"],
+              ["dmo_ihalesi", "DMO İhalesi"],
               ["genel_siparis", "Genel Satış"],
               ["yaklasik_maliyet", "Yaklaşık Maliyet"],
             ] as const
@@ -254,7 +278,7 @@ export function RecordForm({
               <div key={l.key} className="card space-y-3 p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-brand-600">Kalem {i + 1}</span>
-                  {lines.length > 1 && (
+                  {lines.length > 1 && !lockedLines && (
                     <button
                       type="button"
                       onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}
@@ -279,7 +303,8 @@ export function RecordForm({
                     {...invalid(`q-${l.key}`)}
                     value={l.quantity}
                     onChange={(e) => (touched(`q-${l.key}`), update(l.key, { quantity: e.target.value }))}
-                    className="input"
+                    disabled={lockedLines}
+                    className="input disabled:bg-canvas disabled:text-muted"
                     placeholder="Miktar"
                     inputMode="decimal"
                     aria-label="Miktar"
@@ -295,6 +320,18 @@ export function RecordForm({
                     ))}
                   </select>
                 </div>
+                {dmo && (
+                  <input
+                    id={`r-${l.key}`}
+                    {...invalid(`r-${l.key}`)}
+                    value={l.region}
+                    onChange={(e) => (touched(`r-${l.key}`), update(l.key, { region: e.target.value }))}
+                    className="input"
+                    placeholder="Bölge (ör. 1. Bölge)"
+                    aria-label="Bölge"
+                    list="dmo-regions"
+                  />
+                )}
                 {!tender && (
                   <div className="grid grid-cols-[1fr_auto] gap-2">
                     <input
@@ -328,17 +365,32 @@ export function RecordForm({
             );
           })}
         </div>
-        <button
-          type="button"
-          onClick={() => setLines((ls) => [...ls, emptyLine(ls.at(-1)?.currency)])}
-          className="btn mt-3 w-full border-2 border-dashed border-brand-200 bg-brand-50/50 text-brand-600"
-        >
-          <Plus size={18} /> Ürün ekle
-        </button>
-        {tender && (
+        {dmo && (
+          <datalist id="dmo-regions">
+            {[...new Set(lines.map((l) => l.region.trim()).filter(Boolean))].map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
+        )}
+        {!lockedLines && (
+          <button
+            type="button"
+            onClick={() => setLines((ls) => [...ls, { ...emptyLine(ls.at(-1)?.currency), region: dmo ? (ls.at(-1)?.region ?? "") : "" }])}
+            className="btn mt-3 w-full border-2 border-dashed border-brand-200 bg-brand-50/50 text-brand-600"
+          >
+            <Plus size={18} /> Ürün ekle
+          </button>
+        )}
+        {lockedLines ? (
           <p className="mt-2 px-1 text-[12px] text-muted">
-            Fiyatlar burada girilmez; ihaleden önce kaydın sayfasındaki <b>Fiyatlarımızı gir</b> ile girilir.
+            Sonuçlanmış ihalede ürün eklenip silinemez; kazanılan miktarlar kaydın sayfasındaki sonuç düzenleme adımından değişir.
           </p>
+        ) : (
+          tender && (
+            <p className="mt-2 px-1 text-[12px] text-muted">
+              Fiyatlar burada girilmez; ihaleden önce kaydın sayfasındaki <b>Fiyatlarımızı gir</b> ile girilir.
+            </p>
+          )
         )}
       </section>
 

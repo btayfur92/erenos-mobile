@@ -5,7 +5,7 @@ import { Loader2, Pencil, Plus, Trash2, Trophy } from "lucide-react";
 import { adjustContract, deleteCompetitor, saveCompetitor, setOurPrices, type ActionResult } from "@/app/(app)/actions";
 import { Sheet } from "./sheet";
 import { formatMoney, formatQty, toTry } from "@/lib/format";
-import { CURRENCIES, type LineProgress, type RecordLine, type SalesRecord, type TenderBid } from "@/lib/types";
+import { CURRENCIES, lineName, type LineProgress, type RecordLine, type SalesRecord, type TenderBid } from "@/lib/types";
 
 function parseNum(v: string) {
   const s = v.trim().replace(/\s/g, "");
@@ -55,7 +55,7 @@ function PriceRows({
         const v = values[l.id];
         return (
           <div key={l.id} className="rounded-xl bg-canvas p-3">
-            <b className="block truncate text-[14px] font-semibold">{l.product_name}</b>
+            <b className="block truncate text-[14px] font-semibold">{lineName(l)}</b>
             <span className="text-[12px] text-muted">
               {formatQty(l.quantity)} {l.unit}
             </span>
@@ -251,7 +251,7 @@ export function TenderComparison({
           return (
             <div key={l.id} className="card p-4">
               <div className="flex items-baseline justify-between gap-2">
-                <b className="min-w-0 truncate text-[15px] font-semibold">{l.product_name}</b>
+                <b className="min-w-0 truncate text-[15px] font-semibold">{lineName(l)}</b>
                 {rank > 0 && (
                   <span
                     className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold ${
@@ -399,7 +399,7 @@ export function AdjustSheet({
           >
             {contracted.map((l) => (
               <option key={l.id} value={l.id}>
-                {l.product_name}
+                {lineName(l)}
               </option>
             ))}
           </select>

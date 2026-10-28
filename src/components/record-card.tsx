@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BadgeCheck, ChevronRight, Circle, Phone, Siren } from "lucide-react";
 import { formatDate, formatQty, singleTotal, todayIstanbul } from "@/lib/format";
-import { daysUntil, tenderTime, isFullyDelivered, type LineProgress, type SalesRecord } from "@/lib/types";
+import { daysUntil, isTenderType, lineName, tenderTime, isFullyDelivered, type LineProgress, type SalesRecord } from "@/lib/types";
 import { StatusBadge, TypeBadge, statusLabel } from "./status-badge";
 import { ContractTimeBar, ProgressBar } from "./line-progress";
 
@@ -18,7 +18,8 @@ export function RecordCard({
 }) {
   const lines = [...(record.record_lines ?? [])].sort((a, b) => a.sort_order - b.sort_order);
   const approvedLines = lines.filter((l) => l.approved);
-  const tender = record.type === "ihale_siparisi";
+  const tender = isTenderType(record.type);
+  const dmo = record.type === "dmo_ihalesi";
   const isApproved = record.status === "onaylandi" && record.type !== "yaklasik_maliyet";
   const fullyDelivered = isFullyDelivered(record, progress);
   const today = todayIstanbul();
@@ -58,21 +59,28 @@ export function RecordCard({
               [!!record.guarantee_paid_at, "Teminat"],
               [!!record.prices_entered_at, "Fiyatlarımız"],
             ] as const
-          ).map(([done, label]) => (
-            <span
-              key={label}
-              className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 ${done ? "bg-emerald-50 text-emerald-700" : "bg-canvas text-muted"}`}
-            >
-              {done ? <BadgeCheck size={13} /> : <Circle size={11} />} {label}
-            </span>
-          ))}
+          )
+            .filter(([, label]) => !(dmo && label === "Teminat")) // DMO'da süresiz teminat var
+            .map(([done, label]) => (
+              <span
+                key={label}
+                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 ${done ? "bg-emerald-50 text-emerald-700" : "bg-canvas text-muted"}`}
+              >
+                {done ? <BadgeCheck size={13} /> : <Circle size={11} />} {label}
+              </span>
+            ))}
         </div>
       )}
 
       {isApproved ? (
         <div className="mt-3 space-y-2.5">
           {tender && record.contract_start && record.contract_end && (
-            <ContractTimeBar start={record.contract_start} end={record.contract_end} today={today} />
+            <ContractTimeBar
+              start={record.contract_start}
+              end={record.contract_end}
+              today={today}
+              {...(dmo ? { label: "Teslim süresi", alarmDays: 7 } : {})}
+            />
           )}
           {approvedLines.map((l) => {
             const p = progress.get(l.id);
@@ -80,7 +88,7 @@ export function RecordCard({
             return (
               <div key={l.id}>
                 <div className="mb-1 flex items-baseline justify-between gap-2 text-[13px]">
-                  <span className="truncate font-medium">{l.product_name}</span>
+                  <span className="truncate font-medium">{lineName(l)}</span>
                   <span className="shrink-0 tabular-nums text-muted">
                     <b className="font-semibold text-brand-600">{formatQty(p.delivered)}</b>
                     {Number(p.in_shipment) > 0 && <span className="text-brand-400"> +{formatQty(p.in_shipment)} sevkte</span>}
@@ -97,7 +105,7 @@ export function RecordCard({
         <div className="mt-3 flex flex-wrap gap-1.5">
           {lines.slice(0, 3).map((l) => (
             <span key={l.id} className="max-w-full truncate rounded-lg bg-canvas px-2 py-1 text-[12px] text-ink/80">
-              {l.product_name} · {formatQty(l.quantity)} {l.unit}
+              {lineName(l)} · {formatQty(l.quantity)} {l.unit}
             </span>
           ))}
           {lines.length > 3 && <span className="rounded-lg bg-canvas px-2 py-1 text-[12px] text-muted">+{lines.length - 3} kalem</span>}

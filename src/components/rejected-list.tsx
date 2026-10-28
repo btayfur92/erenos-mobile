@@ -3,7 +3,7 @@ import { Archive } from "lucide-react";
 import type { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { formatDate, formatMoney, formatQty } from "@/lib/format";
-import type { RecordLine, SalesRecord } from "@/lib/types";
+import { lineName, type RecordLine, type SalesRecord } from "@/lib/types";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -18,7 +18,7 @@ export async function RejectedList({ supabase, term }: { supabase: SupabaseClien
   let query = supabase
     .from("record_lines")
     .select("*, records!inner(id, hospital, file_no, record_date, status, type, created_at)")
-    .in("records.type", ["dogrudan_temin", "ihale_siparisi"])
+    .in("records.type", ["dogrudan_temin", "ihale_siparisi", "dmo_ihalesi"])
     .not("unit_price", "is", null)
     .eq("approved", false)
     .in("records.status", ["reddedildi", "onaylandi"])
@@ -33,7 +33,7 @@ export async function RejectedList({ supabase, term }: { supabase: SupabaseClien
     const { data: byHospital } = await supabase
       .from("record_lines")
       .select("*, records!inner(id, hospital, file_no, record_date, status, type, created_at)")
-      .in("records.type", ["dogrudan_temin", "ihale_siparisi"])
+      .in("records.type", ["dogrudan_temin", "ihale_siparisi", "dmo_ihalesi"])
       .not("unit_price", "is", null)
       .eq("approved", false)
       .in("records.status", ["reddedildi", "onaylandi"])
@@ -82,7 +82,7 @@ export async function RejectedList({ supabase, term }: { supabase: SupabaseClien
               {lines.map((l) => (
                 <li key={l.id} className="flex items-baseline justify-between gap-3 py-2 text-[14px]">
                   <span className="min-w-0">
-                    <span className="block truncate">{l.product_name}</span>
+                    <span className="block truncate">{lineName(l)}</span>
                     <span className="text-[12px] text-muted">
                       {formatQty(l.quantity)} {l.unit}
                     </span>

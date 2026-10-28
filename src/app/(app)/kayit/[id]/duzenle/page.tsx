@@ -17,6 +17,7 @@ export default async function EditRecordPage({ params }: { params: Promise<{ id:
       <main className="mx-auto max-w-xl px-4 pt-4">
         <RecordForm
           lockedType
+          lockedLines={r.status === "onaylandi" || r.status === "reddedildi"}
           initial={{
             id: r.id,
             type: r.type,
@@ -35,6 +36,7 @@ export default async function EditRecordPage({ params }: { params: Promise<{ id:
               unit: l.unit,
               unit_price: l.unit_price === null ? null : Number(l.unit_price),
               currency: l.currency,
+              region: l.region ?? undefined,
             })),
           }}
         />

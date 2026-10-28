@@ -4,7 +4,7 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { sendToAll, type PushPayload } from "@/lib/push";
-import { RECORD_TYPE_LABEL, REMINDER_INTERVALS, type ManualDirection, type RecordType } from "@/lib/types";
+import { isTenderType, RECORD_TYPE_LABEL, REMINDER_INTERVALS, type ManualDirection, type RecordType } from "@/lib/types";
 import { formatQty } from "@/lib/format";
 import { normalizePhone, PHONE_ERROR } from "@/lib/phone";
 
@@ -37,6 +37,7 @@ export interface LineInput {
   unit: string;
   unit_price: number | null; // ihalede null (fiyat sonradan girilir)
   currency: string;
+  region?: string; // DMO ihalesi: kalemin bölgesi
 }
 
 export interface RecordInput {
@@ -60,7 +61,8 @@ export async function saveRecord(input: RecordInput): Promise<ActionResult> {
   const lines = input.lines.filter((l) => l.product_name.trim());
   if (!lines.length) return { ok: false, error: "En az bir ürün kalemi girin." };
   if (lines.some((l) => !(Number(l.quantity) > 0))) return { ok: false, error: "Ürün miktarları sıfırdan büyük olmalı." };
-  if (input.type !== "ihale_siparisi" && lines.some((l) => l.unit_price === null || !(Number(l.unit_price) >= 0)))
+  if (input.type === "dmo_ihalesi" && lines.some((l) => !l.region?.trim())) return { ok: false, error: "Her ürün için bölge girin." };
+  if (!isTenderType(input.type) && lines.some((l) => l.unit_price === null || !(Number(l.unit_price) >= 0)))
     return { ok: false, error: "Fiyatları kontrol edin." };
   const phone = input.contact_phone.trim() ? normalizePhone(input.contact_phone) : "";
   if (phone === null) return { ok: false, error: PHONE_ERROR };
@@ -78,7 +80,7 @@ export async function saveRecord(input: RecordInput): Promise<ActionResult> {
     p_contact_ext: ext,
     p_notes: input.notes,
     p_lines: lines,
-    p_tender_time: input.type === "ihale_siparisi" ? input.tender_time || "09:00" : null,
+    p_tender_time: isTenderType(input.type) ? input.tender_time || "09:00" : null,
   });
   if (error) return fail(error);
 
@@ -163,12 +165,17 @@ export async function setResult(
   const { supabase, user } = await requireUser();
   const { data: before } = await supabase.from("records").select("status, type").eq("id", recordId).single();
   const wasDecided = before?.status === "onaylandi" || before?.status === "reddedildi";
-  const tender = before?.type === "ihale_siparisi";
-  if (tender && approved && !contractStart) return { ok: false, error: "Sözleşme imza tarihini girin." };
-  if (tender && approved && !contractEnd) return { ok: false, error: "Sözleşme bitiş tarihini girin." };
+  const tender = !!before && isTenderType(before.type);
+  const dmo = before?.type === "dmo_ihalesi";
+  if (tender && approved && !contractStart) return { ok: false, error: dmo ? "Sipariş tarihini girin." : "Sözleşme imza tarihini girin." };
+  if (tender && approved && !contractEnd)
+    return { ok: false, error: dmo ? "Teslim son tarihini girin." : "Sözleşme bitiş tarihini girin." };
   if (tender && approved && contractEnd! < contractStart!)
-    return { ok: false, error: "Sözleşme bitiş tarihi imza tarihinden önce olamaz." };
-  const label = before?.type === "genel_siparis" ? "Genel satış" : tender ? "İhale" : "Doğrudan temin";
+    return {
+      ok: false,
+      error: dmo ? "Teslim son tarihi sipariş tarihinden önce olamaz." : "Sözleşme bitiş tarihi imza tarihinden önce olamaz.",
+    };
+  const label = before?.type === "genel_siparis" ? "Genel satış" : dmo ? "DMO ihalesi" : tender ? "İhale" : "Doğrudan temin";
   const { error } = await supabase.rpc("set_result", {
     p_record_id: recordId,
     p_approved: approved,
@@ -184,12 +191,14 @@ export async function setResult(
     {
       title: wasDecided
         ? `${label} sonucu güncellendi`
-        : tender && approved
-          ? "İhale sözleşmesi imzalandı"
-          : approved
-            ? `${label} onaylandı`
-            : `${label} reddedildi`,
-      body: `${rec?.hospital ?? ""}${rec?.file_no ? ` · ${rec.file_no}` : ""}${approved ? ` · ${lines.length} kalem ${tender ? "sözleşmeli" : "onaylandı"}` : ""}`,
+        : dmo && approved
+          ? "DMO ihalesi siparişi geldi"
+          : tender && approved
+            ? "İhale sözleşmesi imzalandı"
+            : approved
+              ? `${label} onaylandı`
+              : `${label} reddedildi`,
+      body: `${rec?.hospital ?? ""}${rec?.file_no ? ` · ${rec.file_no}` : ""}${approved ? ` · ${lines.length} kalem ${dmo ? "siparişli" : tender ? "sözleşmeli" : "onaylandı"}` : ""}`,
       url: `/kayit/${recordId}`,
     },
     user.id,
@@ -220,12 +229,12 @@ export async function setOurPrices(
 ): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
   if (lines.some((l) => !(l.unit_price >= 0))) return { ok: false, error: "Her kalem için birim fiyat girin." };
-  const { data: before } = await supabase.from("records").select("prices_entered_at").eq("id", recordId).single();
+  const { data: before } = await supabase.from("records").select("prices_entered_at, type").eq("id", recordId).single();
   const { error } = await supabase.rpc("set_our_prices", { p_record_id: recordId, p_lines: lines });
   if (error) return fail(error);
   notify(
     {
-      title: before?.prices_entered_at ? "İhale fiyatlarımız güncellendi" : "İhale fiyatlarımız girildi",
+      title: `${before?.type === "dmo_ihalesi" ? "DMO ihalesi" : "İhale"} fiyatlarımız ${before?.prices_entered_at ? "güncellendi" : "girildi"}`,
       body: await tenderInfo(supabase, recordId),
       url: `/kayit/${recordId}`,
     },

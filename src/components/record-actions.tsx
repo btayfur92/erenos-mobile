@@ -34,7 +34,7 @@ import { Sheet } from "./sheet";
 import { AdjustSheet, PricesSheet } from "./tender";
 import { formatMoney, formatPhone, formatQty, todayIstanbul } from "@/lib/format";
 import { telHref } from "@/lib/phone";
-import type { LineProgress, RecordLine, SalesRecord, SampleItem } from "@/lib/types";
+import { isTenderType, lineName, type LineProgress, type RecordLine, type SalesRecord, type SampleItem } from "@/lib/types";
 
 function parseNum(v: string) {
   const s = v.trim().replace(/\s/g, "");
@@ -80,8 +80,10 @@ export function RecordActions({
   const isDt = record.type === "dogrudan_temin";
   const isGs = record.type === "genel_siparis";
   const isYm = record.type === "yaklasik_maliyet";
-  const isTender = record.type === "ihale_siparisi";
-  const sampleable = isDt || isTender; // numune adımı doğrudan temin ve ihalede
+  const isTender = isTenderType(record.type);
+  const isIhale = record.type === "ihale_siparisi";
+  const isDmo = record.type === "dmo_ihalesi"; // DMO: teminat, numune, iş artışı/eksiltmesi yok
+  const sampleable = isDt || isIhale; // numune adımı doğrudan temin ve ihalede
   const canCall = isDt && (record.status === "arama_bekliyor" || record.status === "arandi");
   const decided = record.status === "onaylandi" || record.status === "reddedildi";
   const canShip = record.status === "onaylandi" && lines.some((l) => l.approved && Number(progress[l.id]?.remaining ?? 0) > 0);
@@ -105,7 +107,17 @@ export function RecordActions({
             </button>
           </div>
         )}
-        {isTender && record.status === "ihale_bekliyor" && (
+        {isDmo && record.status === "ihale_bekliyor" && (
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setSheet("prices")} className={record.prices_entered_at ? "btn-secondary" : "btn-primary"}>
+              <Tag size={17} /> {record.prices_entered_at ? "Fiyatlarımız" : "Fiyatlarımızı gir"}
+            </button>
+            <button onClick={() => setSheet("result")} className="btn-secondary">
+              <FileSignature size={17} /> Sipariş / sonuç
+            </button>
+          </div>
+        )}
+        {isIhale && record.status === "ihale_bekliyor" && (
           <div className="grid grid-cols-2 gap-2">
             {record.guarantee_paid_at ? (
               <button
@@ -171,14 +183,19 @@ export function RecordActions({
             <CheckCircle2 size={18} /> Onayla
           </button>
         )}
-        {isTender && record.status === "onaylandi" && (
+        {isIhale && record.status === "onaylandi" && (
           <button onClick={() => setSheet("adjust")} className="btn-secondary">
             <Scale size={17} /> İş artışı / eksiltmesi
           </button>
         )}
         {(isDt || isGs || isTender) && decided && (
           <button onClick={() => setSheet("result")} className="btn-secondary">
-            <Pencil size={17} /> {isTender && record.status === "onaylandi" ? "Sözleşmeyi düzenle" : "Sonucu düzenle"}
+            <Pencil size={17} />{" "}
+            {isDmo && record.status === "onaylandi"
+              ? "Siparişi düzenle"
+              : isIhale && record.status === "onaylandi"
+                ? "Sözleşmeyi düzenle"
+                : "Sonucu düzenle"}
           </button>
         )}
         {isYm && record.status === "acik" && (
@@ -336,7 +353,7 @@ function SampleSheet({
                     className="mt-0.5 h-5 w-5 accent-brand-600"
                   />
                   <span className="min-w-0 flex-1">
-                    <b className="block truncate text-[15px] font-semibold">{l.product_name}</b>
+                    <b className="block truncate text-[15px] font-semibold">{lineName(l)}</b>
                     <span className="text-[13px] text-muted">
                       Teklif: {formatQty(l.quantity)} {l.unit}
                     </span>
@@ -396,7 +413,38 @@ function ResultSheet({
   const { pending, error, run, setError } = useAction();
   const editing = record.status === "onaylandi" || record.status === "reddedildi";
   // İhalede onay = sözleşme: sözleşmeye davet edilen ürünler ve hastanenin hepsini alacağı son tarih.
-  const tender = record.type === "ihale_siparisi";
+  // DMO ihalesinde onay = sipariş: bize kalan ürünler ve teslim son tarihi.
+  const tender = isTenderType(record.type);
+  const dmo = record.type === "dmo_ihalesi";
+  const T = dmo
+    ? {
+        approve: "Sipariş geldi",
+        pick: "Bize kalan ürünleri seçip sipariş miktarını girin. Seçilmeyen ürünler reddedilmiş sayılır.",
+        start: "Sipariş tarihi",
+        end: "Teslim son tarihi",
+        hint: "Hastanenin bildirdiği, siparişteki tüm ürünlerin teslim edilmesi gereken son tarih.",
+        qty: "Sipariş",
+        none: "Siparişi gelen en az bir ürün seçin.",
+        noStart: "Sipariş tarihini girin.",
+        noEnd: "Teslim son tarihini girin.",
+        order: "Teslim son tarihi sipariş tarihinden önce olamaz.",
+        edit: "Siparişi düzenle",
+        title: "DMO ihalesi sonucu",
+      }
+    : {
+        approve: "Sözleşme imzalandı",
+        pick: "Sözleşmeye davet edilen ürünleri seçip sözleşme miktarını girin. Seçilmeyen ürünler reddedilmiş sayılır.",
+        start: "İmza tarihi",
+        end: "Bitiş tarihi",
+        hint: "İmza tarihi sözleşmenin başlangıcıdır. Bitiş, hastanenin tüm ürünleri alacağı son tarihtir.",
+        qty: "Sözleşme",
+        none: "Sözleşme imzalanan en az bir ürün seçin.",
+        noStart: "Sözleşme imza tarihini girin.",
+        noEnd: "Sözleşme bitiş tarihini girin.",
+        order: "Sözleşme bitiş tarihi imza tarihinden önce olamaz.",
+        edit: "Sözleşmeyi düzenle",
+        title: "İhale sonucu",
+      };
   const [contractStart, setContractStart] = useState(record.contract_start ?? todayIstanbul());
   const [contractEnd, setContractEnd] = useState(record.contract_end ?? "");
   const [badDate, setBadDate] = useState<"start" | "end">();
@@ -430,17 +478,17 @@ function ResultSheet({
       return run(() => setResult(record.id, false, note, []), onClose);
     }
     const chosen = lines.filter((l) => sel[l.id]?.on).map((l) => ({ line_id: l.id, approved_qty: parseNum(sel[l.id].qty) }));
-    if (!chosen.length) return setError(tender ? "Sözleşme imzalanan en az bir ürün seçin." : "Onaylanan en az bir kalem seçin.");
+    if (!chosen.length) return setError(tender ? T.none : "Onaylanan en az bir kalem seçin.");
     if (tender && lines.some((l) => sel[l.id]?.on && l.unit_price === null))
-      return setError("Sözleşmeli ürünlerin fiyatı girilmemiş. Önce “Fiyatlarımızı gir” ile verdiğimiz fiyatları girin.");
+      return setError("Seçilen ürünlerin fiyatı girilmemiş. Önce “Fiyatlarımızı gir” ile verdiğimiz fiyatları girin.");
     const badField = (field: "start" | "end", msg: string) => {
       setBadDate(field);
       document.getElementById(`contract-${field}`)?.focus();
       return setError(msg);
     };
-    if (tender && !contractStart) return badField("start", "Sözleşme imza tarihini girin.");
-    if (tender && !contractEnd) return badField("end", "Sözleşme bitiş tarihini girin.");
-    if (tender && contractEnd < contractStart) return badField("end", "Sözleşme bitiş tarihi imza tarihinden önce olamaz.");
+    if (tender && !contractStart) return badField("start", T.noStart);
+    if (tender && !contractEnd) return badField("end", T.noEnd);
+    if (tender && contractEnd < contractStart) return badField("end", T.order);
     const zero = chosen.find((c) => !(c.approved_qty > 0));
     if (zero) return reject(zero.line_id, "Onaylanan miktar sıfırdan büyük olmalı.");
     const blocked = lines.find((l) => shipped(l.id) > (chosen.find((c) => c.line_id === l.id)?.approved_qty ?? 0));
@@ -457,17 +505,7 @@ function ResultSheet({
     <Sheet
       open={open}
       onClose={onClose}
-      title={
-        editing
-          ? tender
-            ? "Sözleşmeyi düzenle"
-            : "Sonucu düzenle"
-          : gs
-            ? "Genel satış onayı"
-            : tender
-              ? "İhale sonucu"
-              : "Doğrudan temin sonucu"
-      }
+      title={editing ? (tender ? T.edit : "Sonucu düzenle") : gs ? "Genel satış onayı" : tender ? T.title : "Doğrudan temin sonucu"}
     >
       <div className="space-y-4">
         {gs ? null : (
@@ -476,7 +514,7 @@ function ResultSheet({
               onClick={() => setMode("onay")}
               className={`flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold ${mode === "onay" ? "bg-white text-emerald-700 shadow-sm" : "text-muted"}`}
             >
-              <CheckCircle2 size={17} /> {tender ? "Sözleşme imzalandı" : "Onaylandı"}
+              <CheckCircle2 size={17} /> {tender ? T.approve : "Onaylandı"}
             </button>
             <button
               onClick={() => setMode("red")}
@@ -493,14 +531,14 @@ function ResultSheet({
               {gs
                 ? "Kalemler onaylı olarak seçili geldi. Gerekirse miktarı düzeltin."
                 : tender
-                  ? "Sözleşmeye davet edilen ürünleri seçip sözleşme miktarını girin. Seçilmeyen ürünler reddedilmiş sayılır."
+                  ? T.pick
                   : "Onaylanan kalemleri seçin ve onaylanan miktarı düzeltin."}
             </p>
             {tender && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label" htmlFor="contract-start">
-                    İmza tarihi
+                    {T.start}
                   </label>
                   <input
                     id="contract-start"
@@ -513,7 +551,7 @@ function ResultSheet({
                 </div>
                 <div>
                   <label className="field-label" htmlFor="contract-end">
-                    Bitiş tarihi
+                    {T.end}
                   </label>
                   <input
                     id="contract-end"
@@ -524,9 +562,7 @@ function ResultSheet({
                     className="input"
                   />
                 </div>
-                <p className="col-span-2 -mt-1 text-[12px] text-muted">
-                  İmza tarihi sözleşmenin başlangıcıdır. Bitiş, hastanenin tüm ürünleri alacağı son tarihtir.
-                </p>
+                <p className="col-span-2 -mt-1 text-[12px] text-muted">{T.hint}</p>
               </div>
             )}
             {lines.map((l) => {
@@ -544,7 +580,7 @@ function ResultSheet({
                       className="mt-0.5 h-5 w-5 accent-brand-600"
                     />
                     <span className="min-w-0 flex-1">
-                      <b className="block truncate text-[15px] font-semibold">{l.product_name}</b>
+                      <b className="block truncate text-[15px] font-semibold">{lineName(l)}</b>
                       <span className="text-[13px] text-muted">
                         {gs ? "Sipariş" : tender ? "İhale" : "Teklif"}: {formatQty(l.quantity)} {l.unit} ·{" "}
                         {l.unit_price === null ? "fiyat girilmedi" : formatMoney(l.unit_price, l.currency)}
@@ -553,7 +589,7 @@ function ResultSheet({
                   </label>
                   {s.on && (
                     <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-8">
-                      <span className="text-[13px] text-muted">{tender ? "Sözleşme" : "Onaylanan"}</span>
+                      <span className="text-[13px] text-muted">{tender ? T.qty : "Onaylanan"}</span>
                       <input
                         value={s.qty}
                         onChange={(e) => (
@@ -593,7 +629,7 @@ function ResultSheet({
         <ErrorText error={error} />
         <button className={mode === "onay" ? "btn-primary w-full" : "btn-danger w-full"} disabled={pending} onClick={submit}>
           <Spinner show={pending} />{" "}
-          {mode === "onay" ? (tender ? "Sözleşme imzalandı olarak kaydet" : "Onaylandı olarak kaydet") : "Reddedildi olarak kaydet"}
+          {mode === "onay" ? (tender ? `${T.approve} olarak kaydet` : "Onaylandı olarak kaydet") : "Reddedildi olarak kaydet"}
         </button>
       </div>
     </Sheet>
@@ -649,7 +685,7 @@ function ShipmentSheet({
           const p = progress[l.id];
           return (
             <div key={l.id} className="rounded-xl bg-white p-3 ring-1 ring-line">
-              <b className="block truncate text-[15px] font-semibold">{l.product_name}</b>
+              <b className="block truncate text-[15px] font-semibold">{lineName(l)}</b>
               <p className="text-[13px] text-muted">
                 Onaylanan {formatQty(p.approved_qty)} · Kalan <b className="text-ink">{formatQty(p.remaining)}</b> {l.unit}
               </p>

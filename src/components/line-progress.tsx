@@ -36,16 +36,28 @@ export function ProgressStats({ p, unit }: { p: LineProgress; unit: string }) {
   );
 }
 
-/** Sözleşme süresi baremi: imza tarihinden bitiş tarihine geçen süre. Son ayda kırmızı. */
-export function ContractTimeBar({ start, end, today }: { start: string; end: string; today: string }) {
+/** Sözleşme (ihale) ya da teslim (DMO) süresi baremi; bitişe alarmDays veya daha az kalınca kırmızı. */
+export function ContractTimeBar({
+  start,
+  end,
+  today,
+  label = "Sözleşme süresi",
+  alarmDays = 30,
+}: {
+  start: string;
+  end: string;
+  today: string;
+  label?: string;
+  alarmDays?: number;
+}) {
   const total = Math.max(Date.parse(end) - Date.parse(start), 1);
   const elapsed = Math.min(Math.max(Date.parse(today) - Date.parse(start), 0), total);
   const left = Math.round((Date.parse(end) - Date.parse(today)) / 86_400_000);
-  const alarm = left <= 30;
+  const alarm = left <= alarmDays;
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between gap-2 text-[13px]">
-        <span className="font-medium">Sözleşme süresi</span>
+        <span className="font-medium">{label}</span>
         <span className={`shrink-0 tabular-nums ${alarm ? "font-semibold text-accent-600" : "text-muted"}`}>
           {left > 0 ? `${left} gün kaldı` : left === 0 ? "Bugün bitiyor" : `${-left} gün önce bitti`}
         </span>

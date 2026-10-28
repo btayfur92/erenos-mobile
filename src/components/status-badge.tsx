@@ -1,4 +1,4 @@
-import { STATUS_LABEL, tenderCountdown, type RecordStatus, type RecordType, type SalesRecord } from "@/lib/types";
+import { isTenderType, STATUS_LABEL, tenderCountdown, type RecordStatus, type RecordType, type SalesRecord } from "@/lib/types";
 import { todayIstanbul } from "@/lib/format";
 
 const STYLE: Record<RecordStatus, string> = {
@@ -30,6 +30,7 @@ const TYPE_BADGE: Partial<Record<RecordType, [string, string]>> = {
   dogrudan_temin: ["DOĞRUDAN TEMİN", "bg-brand-600 text-white"],
   genel_siparis: ["GENEL SATIŞ", "bg-ink text-white"],
   ihale_siparisi: ["İHALE", "bg-teal-600 text-white"],
+  dmo_ihalesi: ["DMO İHALESİ", "bg-sky-700 text-white"],
   yaklasik_maliyet: ["YAKLAŞIK MALİYET", "bg-brand-100 text-brand-700"],
 };
 
@@ -38,11 +39,12 @@ export function TypeBadge({ type }: { type: RecordType }) {
   return <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-bold tracking-wide ${cls}`}>{label}</span>;
 }
 
-/** Genel satış onay bekler; ihale öncesi kalan gün, sözleşmeli ihale "Sözleşmeli" yazar. */
+/** Genel satış onay bekler; ihale öncesi kalan gün, sözleşmeli ihale "Sözleşmeli", siparişi gelen DMO "Siparişli" yazar. */
 export function statusLabel(record: Pick<SalesRecord, "type" | "status" | "record_date" | "tender_time">) {
   if (record.type === "genel_siparis" && record.status === "acik") return "Onay bekliyor";
-  if (record.type === "ihale_siparisi" && record.status === "ihale_bekliyor")
+  if (isTenderType(record.type) && record.status === "ihale_bekliyor")
     return tenderCountdown(record.record_date, todayIstanbul(), record.tender_time);
   if (record.type === "ihale_siparisi" && record.status === "onaylandi") return "Sözleşmeli";
+  if (record.type === "dmo_ihalesi" && record.status === "onaylandi") return "Siparişli";
   return undefined;
 }

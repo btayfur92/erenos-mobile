@@ -22,14 +22,14 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
     done
       ? supabase
           .from("shipments")
-          .select("*, records(id, hospital, file_no, record_date), shipment_items(*, record_lines(product_name, unit))")
+          .select("*, records(id, hospital, file_no, record_date), shipment_items(*, record_lines(product_name, unit, region))")
           .eq("status", "teslim_edildi")
           .order("delivered_at", { ascending: false })
           .limit(200)
           .returns<Shipment[]>()
       : supabase
           .from("shipments")
-          .select("*, records(id, hospital, file_no, record_date), shipment_items(*, record_lines(product_name, unit))")
+          .select("*, records(id, hospital, file_no, record_date), shipment_items(*, record_lines(product_name, unit, region))")
           .eq("status", "sevk_bekliyor")
           .order("planned_date", { ascending: true })
           .order("requested_at", { ascending: true })

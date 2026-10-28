@@ -12,6 +12,7 @@ create type public.record_type as enum (
   'yaklasik_maliyet',
   'dogrudan_temin',
   'ihale_siparisi',   -- arayüzde "İhale"
+  'dmo_ihalesi',      -- arayüzde "DMO İhalesi"
   'genel_siparis'     -- arayüzde "Genel Satış"
 );
 
@@ -21,6 +22,8 @@ create type public.record_type as enum (
 --      arama_bekliyor | arandi -> numune_istendi -> numune_gonderildi -> onaylandi | reddedildi
 -- İhale: ihale_bekliyor -> [numune_istendi -> numune_gonderildi] -> onaylandi (sözleşme) | reddedildi
 --      Fiyatlar ihale öncesi girilir, rakip fiyatları ihaleden sonra; onaylananlar sözleşmeli kalemlerdir.
+-- DMO: ihale_bekliyor -> onaylandi (sipariş; contract_end = teslim son tarihi) | reddedildi
+--      Teminat, numune ve iş artışı/eksiltmesi yoktur; her kalemin bölgesi vardır.
 -- GS:  acik -> onaylandi             (sipariş zaten alınmıştır; reddedilmez, aranmaz)
 create type public.record_status as enum (
   'acik',
@@ -133,6 +136,7 @@ create table public.records (
     or (type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'numune_istendi', 'numune_gonderildi', 'onaylandi', 'reddedildi'))
     or (type = 'genel_siparis' and status in ('acik', 'onaylandi'))
     or (type = 'ihale_siparisi' and status in ('ihale_bekliyor', 'numune_istendi', 'numune_gonderildi', 'onaylandi', 'reddedildi'))
+    or (type = 'dmo_ihalesi' and status in ('ihale_bekliyor', 'onaylandi', 'reddedildi'))
   )
 );
 
@@ -151,6 +155,7 @@ create table public.record_lines (
   approved boolean,              -- null: sonuç girilmedi
   approved_qty numeric(14, 2) check (approved_qty is null or approved_qty >= 0),
   contract_qty numeric(14, 2),   -- ihale: sözleşmedeki ilk miktar (iş artışı/eksiltmesi en fazla %20)
+  region text,                   -- DMO ihalesi: kalemin bölgesi
   created_at timestamptz not null default now()
 );
 
@@ -385,6 +390,7 @@ declare
   v_status public.record_status;
   v_type public.record_type := p_type;
   v_line_id uuid;
+  v_decided boolean := false;
 begin
   if jsonb_array_length(coalesce(p_lines, '[]'::jsonb)) = 0 then
     raise exception 'En az bir ürün kalemi girilmelidir.';
@@ -394,24 +400,26 @@ begin
     v_status := case p_type when 'yaklasik_maliyet' then 'acik'::public.record_status
                             when 'dogrudan_temin' then 'arama_bekliyor'::public.record_status
                             when 'genel_siparis' then 'acik'::public.record_status
-                            when 'ihale_siparisi' then 'ihale_bekliyor'::public.record_status end;
+                            when 'ihale_siparisi' then 'ihale_bekliyor'::public.record_status
+                            when 'dmo_ihalesi' then 'ihale_bekliyor'::public.record_status end;
     if v_status is null then
       raise exception 'Bu satış tipi henüz desteklenmiyor.';
     end if;
     insert into records (type, status, record_date, tender_time, file_no, hospital, contact_name, contact_phone, contact_ext, notes)
     values (p_type, v_status, p_record_date,
-            case when p_type = 'ihale_siparisi' then coalesce(p_tender_time, '09:00'::time) end,
+            case when p_type in ('ihale_siparisi', 'dmo_ihalesi') then coalesce(p_tender_time, '09:00'::time) end,
             nullif(trim(p_file_no), ''), trim(p_hospital),
             nullif(trim(p_contact_name), ''), nullif(trim(p_contact_phone), ''), nullif(trim(p_contact_ext), ''),
             nullif(trim(p_notes), ''))
     returning id into v_id;
   else
-    if exists (select 1 from records where id = v_id and status in ('onaylandi', 'reddedildi')) then
+    select type, status in ('onaylandi', 'reddedildi') into v_type, v_decided from records where id = v_id;
+    if v_decided and v_type not in ('ihale_siparisi', 'dmo_ihalesi') then
       raise exception 'Sonuçlanmış kayıtların kalemleri değiştirilemez.';
     end if;
     update records set
       record_date = p_record_date,
-      tender_time = case when type = 'ihale_siparisi' then coalesce(p_tender_time, '09:00'::time) end,
+      tender_time = case when type in ('ihale_siparisi', 'dmo_ihalesi') then coalesce(p_tender_time, '09:00'::time) end,
       file_no = nullif(trim(p_file_no), ''),
       hospital = trim(p_hospital),
       contact_name = nullif(trim(p_contact_name), ''),
@@ -422,7 +430,25 @@ begin
     if not found then
       raise exception 'Kayıt bulunamadı.';
     end if;
-    select type into v_type from records where id = v_id;
+    -- Sonuçlanmış ihalede kalem eklenip silinemez, miktar sonuç adımından değişir; ad, birim ve bölge düzeltilebilir.
+    if v_decided then
+      if exists (select 1 from jsonb_array_elements(p_lines) x where coalesce(x ->> 'id', '') = '')
+         or exists (select 1 from record_lines l where l.record_id = v_id
+                    and l.id not in (select (x ->> 'id')::uuid from jsonb_array_elements(p_lines) x where coalesce(x ->> 'id', '') <> '')) then
+        raise exception 'Sonuçlanmış ihalede ürün eklenemez veya silinemez.';
+      end if;
+      for v_line in select * from jsonb_array_elements(p_lines) loop
+        if v_type = 'dmo_ihalesi' and coalesce(trim(v_line ->> 'region'), '') = '' then
+          raise exception 'Her ürün için bölge girilmelidir.';
+        end if;
+        update record_lines set
+          product_name = trim(v_line ->> 'product_name'),
+          unit = coalesce(nullif(trim(v_line ->> 'unit'), ''), 'Adet'),
+          region = case when v_type = 'dmo_ihalesi' then trim(v_line ->> 'region') end
+        where id = (v_line ->> 'id')::uuid and record_id = v_id;
+      end loop;
+      return v_id;
+    end if;
     -- Kalemler kimlikleriyle güncellenir (rakip fiyatları vb. kaleme bağlı kalır); listeden çıkarılanlar silinir.
     delete from record_lines
     where record_id = v_id
@@ -430,8 +456,11 @@ begin
   end if;
 
   for v_line in select * from jsonb_array_elements(p_lines) loop
-    if v_type <> 'ihale_siparisi' and coalesce((v_line ->> 'unit_price')::numeric, -1) < 0 then
+    if v_type not in ('ihale_siparisi', 'dmo_ihalesi') and coalesce((v_line ->> 'unit_price')::numeric, -1) < 0 then
       raise exception 'Birim fiyat girilmelidir.';
+    end if;
+    if v_type = 'dmo_ihalesi' and coalesce(trim(v_line ->> 'region'), '') = '' then
+      raise exception 'Her ürün için bölge girilmelidir.';
     end if;
     v_line_id := null;
     if coalesce(v_line ->> 'id', '') <> '' then
@@ -441,20 +470,22 @@ begin
         quantity = (v_line ->> 'quantity')::numeric,
         unit = coalesce(nullif(trim(v_line ->> 'unit'), ''), 'Adet'),
         -- ihalede fiyat bu formdan değil "Fiyatlarımızı gir" adımından gelir
-        unit_price = case when v_type = 'ihale_siparisi' then unit_price else (v_line ->> 'unit_price')::numeric end,
-        currency = case when v_type = 'ihale_siparisi' then currency else coalesce(nullif(v_line ->> 'currency', ''), 'TRY') end
+        unit_price = case when v_type in ('ihale_siparisi', 'dmo_ihalesi') then unit_price else (v_line ->> 'unit_price')::numeric end,
+        currency = case when v_type in ('ihale_siparisi', 'dmo_ihalesi') then currency else coalesce(nullif(v_line ->> 'currency', ''), 'TRY') end,
+        region = case when v_type = 'dmo_ihalesi' then trim(v_line ->> 'region') end
       where id = (v_line ->> 'id')::uuid and record_id = v_id
       returning id into v_line_id;
     end if;
     if v_line_id is null then
-      insert into record_lines (record_id, sort_order, product_name, quantity, unit, unit_price, currency)
+      insert into record_lines (record_id, sort_order, product_name, quantity, unit, unit_price, currency, region)
       values (
         v_id, v_i,
         trim(v_line ->> 'product_name'),
         (v_line ->> 'quantity')::numeric,
         coalesce(nullif(trim(v_line ->> 'unit'), ''), 'Adet'),
-        case when v_type = 'ihale_siparisi' then null else (v_line ->> 'unit_price')::numeric end,
-        coalesce(nullif(v_line ->> 'currency', ''), 'TRY')
+        case when v_type in ('ihale_siparisi', 'dmo_ihalesi') then null else (v_line ->> 'unit_price')::numeric end,
+        coalesce(nullif(v_line ->> 'currency', ''), 'TRY'),
+        case when v_type = 'dmo_ihalesi' then trim(v_line ->> 'region') end
       );
     end if;
     v_i := v_i + 1;
@@ -577,15 +608,17 @@ begin
     where id = p_record_id
       and ((type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'numune_istendi', 'numune_gonderildi', 'onaylandi', 'reddedildi'))
         or (type = 'ihale_siparisi' and status in ('ihale_bekliyor', 'numune_istendi', 'numune_gonderildi', 'onaylandi', 'reddedildi'))
+        or (type = 'dmo_ihalesi' and status in ('ihale_bekliyor', 'onaylandi', 'reddedildi'))
         or (type = 'genel_siparis' and status in ('acik', 'onaylandi')))
   ) then
     raise exception 'Bu kayıt için sonuç girilemez.';
   end if;
-  if p_approved and v_type = 'ihale_siparisi' and p_contract_end is null then
-    raise exception 'Sözleşme bitiş tarihi girilmelidir.';
+  if p_approved and v_type in ('ihale_siparisi', 'dmo_ihalesi') and p_contract_end is null then
+    raise exception '%', case when v_type = 'dmo_ihalesi' then 'Teslim son tarihi girilmelidir.' else 'Sözleşme bitiş tarihi girilmelidir.' end;
   end if;
-  if p_approved and v_type = 'ihale_siparisi' and p_contract_end < coalesce(p_contract_start, current_date) then
-    raise exception 'Sözleşme bitiş tarihi imza tarihinden önce olamaz.';
+  if p_approved and v_type in ('ihale_siparisi', 'dmo_ihalesi') and p_contract_end < coalesce(p_contract_start, current_date) then
+    raise exception '%', case when v_type = 'dmo_ihalesi' then 'Teslim son tarihi sipariş tarihinden önce olamaz.'
+                              else 'Sözleşme bitiş tarihi imza tarihinden önce olamaz.' end;
   end if;
   if not p_approved and exists (select 1 from records where id = p_record_id and type = 'genel_siparis') then
     raise exception 'Genel satış reddedilemez.';
@@ -610,10 +643,10 @@ begin
         contract_qty = case when v_type = 'ihale_siparisi' then v_qty end
       where id = (v_line ->> 'line_id')::uuid;
     end loop;
-    if v_type = 'ihale_siparisi' and exists (
+    if v_type in ('ihale_siparisi', 'dmo_ihalesi') and exists (
       select 1 from record_lines where record_id = p_record_id and approved and unit_price is null
     ) then
-      raise exception 'Sözleşmeli kalemlerin fiyatı girilmemiş. Önce "Fiyatlarımızı gir" ile verdiğimiz fiyatları girin.';
+      raise exception 'Kazanılan kalemlerin fiyatı girilmemiş. Önce "Fiyatlarımızı gir" ile verdiğimiz fiyatları girin.';
     end if;
   else
     update record_lines set approved = false, approved_qty = null where record_id = p_record_id;
@@ -637,8 +670,8 @@ begin
                     else 'reddedildi'::public.record_status end,
       result_at = now(),
       result_note = nullif(trim(p_note), ''),
-      contract_start = case when v_type = 'ihale_siparisi' and p_approved then coalesce(p_contract_start, current_date) end,
-      contract_end = case when v_type = 'ihale_siparisi' and p_approved then p_contract_end end,
+      contract_start = case when v_type in ('ihale_siparisi', 'dmo_ihalesi') and p_approved then coalesce(p_contract_start, current_date) end,
+      contract_end = case when v_type in ('ihale_siparisi', 'dmo_ihalesi') and p_approved then p_contract_end end,
       contract_alarm_sent_at = case when contract_end is distinct from p_contract_end then null else contract_alarm_sent_at end
   where id = p_record_id;
 end;
@@ -672,7 +705,7 @@ as $$
 declare
   v_line jsonb;
 begin
-  if not exists (select 1 from records where id = p_record_id and type = 'ihale_siparisi' and status not in ('onaylandi', 'reddedildi')) then
+  if not exists (select 1 from records where id = p_record_id and type in ('ihale_siparisi', 'dmo_ihalesi') and status not in ('onaylandi', 'reddedildi')) then
     raise exception 'Bu ihalede fiyatlar değiştirilemez.';
   end if;
   for v_line in select * from jsonb_array_elements(coalesce(p_lines, '[]'::jsonb)) loop
@@ -701,7 +734,7 @@ as $$
 declare
   v_item jsonb;
 begin
-  if not exists (select 1 from records where id = p_record_id and type = 'ihale_siparisi') then
+  if not exists (select 1 from records where id = p_record_id and type in ('ihale_siparisi', 'dmo_ihalesi')) then
     raise exception 'Kayıt bulunamadı.';
   end if;
   if length(trim(coalesce(p_company, ''))) = 0 then

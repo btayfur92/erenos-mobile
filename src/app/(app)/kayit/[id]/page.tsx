@@ -8,6 +8,8 @@ import { getRates } from "@/lib/fx";
 import { telHref } from "@/lib/phone";
 import {
   RECORD_TYPE_LABEL,
+  lineName,
+  isTenderType,
   tenderCountdown,
   tenderTime,
   type CallLog,
@@ -45,7 +47,8 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
   const { data: record } = await supabase.from("records").select("*, record_lines(*)").eq("id", id).single<SalesRecord>();
   if (!record) notFound();
 
-  const tender = record.type === "ihale_siparisi";
+  const tender = isTenderType(record.type);
+  const dmo = record.type === "dmo_ihalesi";
   const [
     { data: calls },
     { data: shipments },
@@ -60,7 +63,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
     supabase.from("call_logs").select("*").eq("record_id", id).order("created_at", { ascending: false }).returns<CallLog[]>(),
     supabase
       .from("shipments")
-      .select("*, shipment_items(*, record_lines(product_name, unit))")
+      .select("*, shipment_items(*, record_lines(product_name, unit, region))")
       .eq("record_id", id)
       .order("requested_at", { ascending: false })
       .returns<Shipment[]>(),
@@ -105,7 +108,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
         subtitle={RECORD_TYPE_LABEL[record.type]}
         back={
           tender
-            ? `/?f=ihale${record.status === "onaylandi" ? "&d=onay" : record.status === "reddedildi" ? "&d=red" : ""}`
+            ? `/?f=${dmo ? "dmo" : "ihale"}${record.status === "onaylandi" ? "&d=onay" : record.status === "reddedildi" ? "&d=red" : ""}`
             : record.status === "reddedildi"
               ? "/?f=red"
               : gs && record.status === "onaylandi"
@@ -113,7 +116,8 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                 : "/"
         }
         action={
-          !decided && (
+          // İhale ve DMO ihalesi sonuçlandıktan sonra da düzenlenebilir (ad, bölge, iletişim; kalem eklenip silinemez).
+          (!decided || tender) && (
             <Link
               href={`/kayit/${id}/duzenle`}
               className="grid h-10 w-10 place-items-center rounded-xl text-brand-600 hover:bg-brand-50"
@@ -144,7 +148,15 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                 : `${tender ? "İhale" : "Dosya"} no girilmedi`}
             </p>
             <p className="mt-4 text-[13px] text-white/70">
-              {approved ? (tender ? "Sözleşme toplamı" : "Onaylanan toplam") : gs ? "Sipariş toplamı" : "Toplam teklif"}
+              {approved
+                ? dmo
+                  ? "Sipariş toplamı"
+                  : tender
+                    ? "Sözleşme toplamı"
+                    : "Onaylanan toplam"
+                : gs
+                  ? "Sipariş toplamı"
+                  : "Toplam teklif"}
             </p>
             <p className="text-2xl font-semibold tabular-nums tracking-tight">
               {singleTotal(
@@ -185,12 +197,14 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                 {record.status === "ihale_bekliyor" && (
                   <p className="font-semibold text-teal-700">{tenderCountdown(record.record_date, today, record.tender_time)}</p>
                 )}
-                <p className={`flex items-center gap-1.5 ${record.guarantee_paid_at ? "text-emerald-700" : "text-muted"}`}>
-                  <BadgeCheck size={14} />
-                  {record.guarantee_paid_at
-                    ? `Teminat yatırıldı · ${formatDateTime(record.guarantee_paid_at)}${record.guarantee_paid_by && names[record.guarantee_paid_by] ? ` · ${names[record.guarantee_paid_by]}` : ""}`
-                    : "Teminat henüz yatırılmadı"}
-                </p>
+                {!dmo && (
+                  <p className={`flex items-center gap-1.5 ${record.guarantee_paid_at ? "text-emerald-700" : "text-muted"}`}>
+                    <BadgeCheck size={14} />
+                    {record.guarantee_paid_at
+                      ? `Teminat yatırıldı · ${formatDateTime(record.guarantee_paid_at)}${record.guarantee_paid_by && names[record.guarantee_paid_by] ? ` · ${names[record.guarantee_paid_by]}` : ""}`
+                      : "Teminat henüz yatırılmadı"}
+                  </p>
+                )}
                 <p className={`flex items-center gap-1.5 ${record.prices_entered_at ? "text-emerald-700" : "text-muted"}`}>
                   <Tag size={14} />
                   {record.prices_entered_at
@@ -199,7 +213,9 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                 </p>
                 {record.status === "ihale_bekliyor" && (
                   <p className="text-muted">
-                    İhaleden 3 gün önce mesai içinde 2 saatte bir, son 24 saatte saatte bir herkese hatırlatma gider.
+                    {dmo
+                      ? "İhaleden 2 gün önce mesai içinde 2 saatte bir, son 24 saatte saatte bir herkese hatırlatma gider. DMO ihalelerinde süresiz teminat olduğu için teminat adımı yoktur."
+                      : "İhaleden 3 gün önce mesai içinde 2 saatte bir, son 24 saatte saatte bir herkese hatırlatma gider."}
                   </p>
                 )}
               </div>
@@ -247,7 +263,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                 <div key={l.id} className={`card p-4 ${rejected ? "opacity-60" : ""}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-[15px] font-semibold leading-snug">{l.product_name}</p>
+                      <p className="text-[15px] font-semibold leading-snug">{lineName(l)}</p>
                       <p className="mt-0.5 text-[13px] text-muted">
                         {formatQty(qty)} {l.unit}
                         {l.unit_price === null ? " · fiyat girilmedi" : ` × ${formatMoney(l.unit_price, l.currency)}`}
@@ -264,7 +280,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                       )}
                       {approved && (
                         <span className={`text-[12px] font-semibold ${l.approved ? "text-emerald-700" : "text-accent-600"}`}>
-                          {l.approved ? (tender ? "Sözleşmeli" : "Onaylandı") : tender ? "Reddedildi" : "Onaylanmadı"}
+                          {l.approved ? (dmo ? "Siparişli" : tender ? "Sözleşmeli" : "Onaylandı") : tender ? "Reddedildi" : "Onaylanmadı"}
                         </span>
                       )}
                     </div>
@@ -282,19 +298,24 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
         </Section>
 
         {tender && record.status === "onaylandi" && record.contract_start && record.contract_end && (
-          <Section title="Sözleşme">
+          <Section title={dmo ? "Sipariş ve teslim" : "Sözleşme"}>
             <div className="card space-y-3 p-4">
               <div className="grid grid-cols-2 gap-2 text-[13px]">
                 <p>
-                  <span className="block text-muted">İmza</span>
+                  <span className="block text-muted">{dmo ? "Sipariş" : "İmza"}</span>
                   <b className="font-semibold">{formatDate(record.contract_start)}</b>
                 </p>
                 <p>
-                  <span className="block text-muted">Bitiş</span>
+                  <span className="block text-muted">{dmo ? "Teslim son tarihi" : "Bitiş"}</span>
                   <b className="font-semibold">{formatDate(record.contract_end)}</b>
                 </p>
               </div>
-              <ContractTimeBar start={record.contract_start} end={record.contract_end} today={today} />
+              <ContractTimeBar
+                start={record.contract_start}
+                end={record.contract_end}
+                today={today}
+                {...(dmo ? { label: "Teslim süresi", alarmDays: 7 } : {})}
+              />
               {(() => {
                 const totalQty = lines.filter((l) => l.approved).reduce((t, l) => t + Number(l.approved_qty ?? 0), 0);
                 const delivered = lines.filter((l) => l.approved).reduce((t, l) => t + Number(progress[l.id]?.delivered ?? 0), 0);

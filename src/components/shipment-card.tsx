@@ -5,7 +5,7 @@ import Link from "next/link";
 import { CheckCircle2, Loader2, PackageCheck, Truck, X } from "lucide-react";
 import { cancelShipment, markDelivered } from "@/app/(app)/actions";
 import { formatDate, formatDateTime, formatQty, todayIstanbul } from "@/lib/format";
-import type { Shipment } from "@/lib/types";
+import { lineName, type Shipment } from "@/lib/types";
 
 export function ShipmentCard({
   shipment,
@@ -69,7 +69,7 @@ export function ShipmentCard({
       <ul className="mt-3 divide-y divide-line/70 rounded-xl bg-canvas px-3">
         {shipment.shipment_items?.map((i) => (
           <li key={i.id} className="flex items-baseline justify-between gap-3 py-2 text-[14px]">
-            <span className="truncate">{i.record_lines?.product_name}</span>
+            <span className="truncate">{i.record_lines ? lineName(i.record_lines) : ""}</span>
             <b className="shrink-0 font-semibold tabular-nums">
               {formatQty(i.quantity)} <span className="font-normal text-muted">{i.record_lines?.unit}</span>
             </b>

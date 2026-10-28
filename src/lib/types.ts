@@ -1,4 +1,11 @@
-export type RecordType = "yaklasik_maliyet" | "dogrudan_temin" | "ihale_siparisi" | "genel_siparis";
+export type RecordType = "yaklasik_maliyet" | "dogrudan_temin" | "ihale_siparisi" | "dmo_ihalesi" | "genel_siparis";
+
+/** İhale ve DMO ihalesi: tarihli ihale, sonradan girilen fiyatlar, rakip fiyatları, sözleşme/sipariş süresi. */
+export const isTenderType = (type: RecordType) => type === "ihale_siparisi" || type === "dmo_ihalesi";
+
+/** Kalem adı; DMO ihalesinde bölgesiyle ("Eldiven · 2. Bölge"). */
+export const lineName = (l: { product_name: string; region?: string | null }) =>
+  l.region ? `${l.product_name} · ${l.region}` : l.product_name;
 
 export type RecordStatus =
   | "acik"
@@ -24,6 +31,7 @@ export interface RecordLine {
   approved: boolean | null;
   approved_qty: number | null;
   contract_qty: number | null; // ihale: sözleşmedeki ilk miktar
+  region: string | null; // DMO ihalesi: kalemin bölgesi
 }
 
 export interface SalesRecord {
@@ -190,6 +198,7 @@ export const RECORD_TYPE_LABEL: Record<RecordType, string> = {
   yaklasik_maliyet: "Yaklaşık Maliyet",
   dogrudan_temin: "Doğrudan Temin",
   ihale_siparisi: "İhale",
+  dmo_ihalesi: "DMO İhalesi",
   genel_siparis: "Genel Satış",
 };
 
@@ -197,6 +206,7 @@ export const RECORD_TYPE_SHORT: Record<RecordType, string> = {
   yaklasik_maliyet: "YM",
   dogrudan_temin: "DT",
   ihale_siparisi: "İS",
+  dmo_ihalesi: "DMO",
   genel_siparis: "GS",
 };
 

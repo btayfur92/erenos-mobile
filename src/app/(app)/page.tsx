@@ -15,6 +15,7 @@ const FILTERS = [
   { key: "gundem", label: "Gündemdekiler" },
   { key: "ihale", label: "İhale" },
   { key: "dt", label: "Doğrudan Temin" },
+  { key: "dmo", label: "DMO İhalesi" },
   { key: "gs", label: "Genel Satış" },
   { key: "ym", label: "Yaklaşık Maliyet" },
   { key: "arama", label: "Arama bekleyen" },
@@ -26,8 +27,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // Doğrudan Temin sekmesi sonuçlanmış kayıtları Onaylanan / Reddedilen olarak ayırır.
   // Yaklaşık maliyetler Gündem'e girmez; kendi sekmesinde Bekleyen / Onaylanan / Reddedilen olarak durur.
   // Genel satış onaylanana kadar Gündem'de, sonra Genel Satış sekmesinde (teslimatı sürenler üstte).
-  // İhale sekmesi: Süreçte (ihale öncesi / numune) · Sözleşmeli · Reddedilen.
-  const d = dParam ?? (f === "ym" ? "bekle" : f === "ihale" ? "surec" : "onay");
+  // İhale sekmesi: Süreçte (ihale öncesi / numune) · Sözleşmeli · Reddedilen. DMO İhalesi: Süreçte · Siparişli · Reddedilen.
+  const tf = f === "ihale" || f === "dmo";
+  const d = dParam ?? (f === "ym" ? "bekle" : tf ? "surec" : "onay");
   const today = todayIstanbul();
   const monthAhead = new Date(Date.parse(today) + 30 * 86_400_000).toISOString().slice(0, 10);
   const resolved = d === "red" ? "reddedildi" : d === "bekle" && f === "ym" ? "acik" : "onaylandi";
@@ -36,7 +38,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   let query = supabase
     .from("records")
     .select("*, record_lines(*)")
-    .in("type", ["yaklasik_maliyet", "dogrudan_temin", "genel_siparis", "ihale_siparisi"])
+    .in("type", ["yaklasik_maliyet", "dogrudan_temin", "genel_siparis", "ihale_siparisi", "dmo_ihalesi"])
     .order("record_date", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(300);
@@ -45,12 +47,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // ve sözleşmesinin son ayına girmiş ihaleler (kırmızı çerçeveli).
   if (f === "gundem")
     query = query
-      .in("type", ["dogrudan_temin", "genel_siparis", "ihale_siparisi"])
+      .in("type", ["dogrudan_temin", "genel_siparis", "ihale_siparisi", "dmo_ihalesi"])
       .or(
         `status.in.(arama_bekliyor,arandi,numune_istendi,numune_gonderildi,acik,ihale_bekliyor),and(type.eq.ihale_siparisi,status.eq.onaylandi,contract_end.lte.${monthAhead})`,
       );
-  if (f === "ihale") {
-    query = query.eq("type", "ihale_siparisi");
+  if (tf) {
+    query = query.eq("type", f === "dmo" ? "dmo_ihalesi" : "ihale_siparisi");
     query =
       d === "onay"
         ? query.eq("status", "onaylandi")
@@ -90,8 +92,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   let list = records ?? [];
   if (f === "gs" || f === "dt")
     list = [...list].sort((a, b) => Number(isFullyDelivered(a, progress)) - Number(isFullyDelivered(b, progress)));
-  if (f === "ihale" && d === "surec") list = [...list].sort((a, b) => a.record_date.localeCompare(b.record_date));
-  if (f === "ihale" && d === "onay")
+  if (tf && d === "surec") list = [...list].sort((a, b) => a.record_date.localeCompare(b.record_date));
+  if (tf && d === "onay")
     list = [...list].sort(
       (a, b) =>
         Number(isFullyDelivered(a, progress)) - Number(isFullyDelivered(b, progress)) ||
@@ -184,12 +186,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           })}
         </ChipStrip>
 
-        {f === "ihale" && (
+        {tf && (
           <div className="mt-3 grid grid-cols-3 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
             {(
               [
                 ["surec", "Süreçte", Gavel, "bg-teal-50 text-teal-700"],
-                ["onay", "Sözleşmeli", FileSignature, "bg-emerald-50 text-emerald-700"],
+                ["onay", f === "dmo" ? "Siparişli" : "Sözleşmeli", FileSignature, "bg-emerald-50 text-emerald-700"],
                 ["red", "Reddedilen", XCircle, "bg-accent-50 text-accent-700"],
               ] as const
             ).map(([key, label, Icon, activeCls]) => {
@@ -249,15 +251,17 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                     ? "Farklı bir arama deneyin."
                     : f === "gs"
                       ? "Onaylanan genel satışlar burada görünür."
-                      : f === "ihale" && d !== "surec"
+                      : tf && d !== "surec"
                         ? d === "onay"
-                          ? "Sözleşmesi imzalanan ihaleler burada görünür."
-                          : "Reddedilen ihaleler burada görünür."
+                          ? f === "dmo"
+                            ? "Siparişi gelen DMO ihaleleri burada görünür."
+                            : "Sözleşmesi imzalanan ihaleler burada görünür."
+                          : `Reddedilen ${f === "dmo" ? "DMO ihaleleri" : "ihaleler"} burada görünür.`
                         : "İlk kaydı alttaki + ile ekleyin."
                 }
               >
                 {!term && (
-                  <Link href={f === "ihale" ? "/yeni?tip=ihale" : "/yeni"} className="btn-primary">
+                  <Link href={tf ? `/yeni?tip=${f}` : "/yeni"} className="btn-primary">
                     Yeni kayıt
                   </Link>
                 )}
