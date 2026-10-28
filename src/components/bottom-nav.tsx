@@ -23,7 +23,7 @@ export function BottomNav({ pendingShipments, canAdd }: { pendingShipments: numb
         {tabs.map((tab, i) =>
           tab === null ? (
             <div key={i} className="flex justify-center">
-              {canAdd && (
+              {canAdd ? (
                 <Link
                   href="/yeni"
                   aria-label="Yeni kayıt"
@@ -31,6 +31,9 @@ export function BottomNav({ pendingShipments, canAdd }: { pendingShipments: numb
                 >
                   <Plus size={26} strokeWidth={2.4} />
                 </Link>
+              ) : (
+                // Sevkiyat kullanıcısı kayıt açamaz: görünüm bozulmasın diye boş kutu kalır.
+                <span aria-hidden className="-mt-6 grid h-14 w-14 rounded-2xl bg-brand-600 shadow-float" />
               )}
             </div>
           ) : (
