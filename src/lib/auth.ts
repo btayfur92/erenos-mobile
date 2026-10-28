@@ -7,10 +7,11 @@ import { canSell, type Profile } from "./types";
 /** Oturumdaki kullanıcı ve profili. Oturum yoksa login'e yönlendirir. */
 export const requireUser = cache(async () => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  // Oturum JWT'si yerelde doğrulanır (her sayfada Auth sunucusuna ayrı istek atılmaz).
+  const { data } = await supabase.auth.getClaims();
+  const id = data?.claims.sub;
+  if (!id) redirect("/login");
+  const user = { id };
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single<Profile>();
   if (!profile || !profile.active) {
     await supabase.auth.signOut();

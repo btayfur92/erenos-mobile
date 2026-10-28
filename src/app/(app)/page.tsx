@@ -73,16 +73,25 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   }
 
   // "Reddedilen" sekmesi kayıt yerine fiyat arşivini (RejectedList) gösterir.
-  const [{ data: records }, { count: waitingCount }] = await Promise.all([
+  // Birbirinden bağımsız sorgular aynı anda gider (her biri veritabanına ayrı bir gidiş-dönüş).
+  const ratesPromise = getRates();
+  const [{ data: records }, { count: waitingCount }, { count: myReminders }] = await Promise.all([
     f === "red" || (tf && d === "red") ? Promise.resolve({ data: [] as SalesRecord[] }) : query.returns<SalesRecord[]>(),
     supabase.from("records").select("id", { count: "exact", head: true }).eq("status", "arama_bekliyor"),
+    // Anımsatıcı rozeti: bana eklenmiş, başlamış ve henüz tamamlamadığım anımsatıcılar.
+    supabase
+      .from("reminder_recipients")
+      .select("reminder_id, reminders!inner(starts_at)", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .is("done_at", null)
+      .lte("reminders.starts_at", new Date().toISOString()),
   ]);
   const [progress, rates] = await Promise.all([
     fetchProgress(
       supabase,
       (records ?? []).filter((r) => r.status === "onaylandi").map((r) => r.id),
     ),
-    getRates(),
+    ratesPromise,
   ]);
 
   // Doğrudan Temin ve Genel Satış: tamamı teslim edilenler en alta (kendi içlerinde tarih sırası korunur).
@@ -102,13 +111,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   if (f === "gundem") list = list.filter((r) => !isTenderType(r.type) || tenderAt(r.record_date, r.tender_time) > now);
 
   const firstName = (profile.full_name || profile.username).split(" ")[0];
-  // Anımsatıcı rozeti: bana eklenmiş, başlamış ve henüz tamamlamadığım anımsatıcılar.
-  const { count: myReminders } = await supabase
-    .from("reminder_recipients")
-    .select("reminder_id, reminders!inner(starts_at)", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .is("done_at", null)
-    .lte("reminders.starts_at", new Date().toISOString());
 
   return (
     <>
