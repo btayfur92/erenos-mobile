@@ -397,8 +397,9 @@ function ResultSheet({
   const editing = record.status === "onaylandi" || record.status === "reddedildi";
   // İhalede onay = sözleşme: sözleşmeye davet edilen ürünler ve hastanenin hepsini alacağı son tarih.
   const tender = record.type === "ihale_siparisi";
+  const [contractStart, setContractStart] = useState(record.contract_start ?? todayIstanbul());
   const [contractEnd, setContractEnd] = useState(record.contract_end ?? "");
-  const [badEnd, setBadEnd] = useState(false);
+  const [badDate, setBadDate] = useState<"start" | "end">();
   const [mode, setMode] = useState<"onay" | "red">(record.status === "reddedildi" ? "red" : "onay");
   const [note, setNote] = useState(editing ? (record.result_note ?? "") : "");
   const [sel, setSel] = useState<Record<string, { on: boolean; qty: string }>>(() =>
@@ -432,11 +433,14 @@ function ResultSheet({
     if (!chosen.length) return setError(tender ? "Sözleşme imzalanan en az bir ürün seçin." : "Onaylanan en az bir kalem seçin.");
     if (tender && lines.some((l) => sel[l.id]?.on && l.unit_price === null))
       return setError("Sözleşmeli ürünlerin fiyatı girilmemiş. Önce “Fiyatlarımızı gir” ile verdiğimiz fiyatları girin.");
-    if (tender && !contractEnd) {
-      setBadEnd(true);
-      document.getElementById("contract-end")?.focus();
-      return setError("Sözleşme bitiş tarihini girin.");
-    }
+    const badField = (field: "start" | "end", msg: string) => {
+      setBadDate(field);
+      document.getElementById(`contract-${field}`)?.focus();
+      return setError(msg);
+    };
+    if (tender && !contractStart) return badField("start", "Sözleşme imza tarihini girin.");
+    if (tender && !contractEnd) return badField("end", "Sözleşme bitiş tarihini girin.");
+    if (tender && contractEnd < contractStart) return badField("end", "Sözleşme bitiş tarihi imza tarihinden önce olamaz.");
     const zero = chosen.find((c) => !(c.approved_qty > 0));
     if (zero) return reject(zero.line_id, "Onaylanan miktar sıfırdan büyük olmalı.");
     const blocked = lines.find((l) => shipped(l.id) > (chosen.find((c) => c.line_id === l.id)?.approved_qty ?? 0));
@@ -446,7 +450,7 @@ function ResultSheet({
         `${blocked.product_name} için ${formatQty(shipped(blocked.id))} ${blocked.unit} sevkiyata aktarılmış. Onaylanan miktar bunun altına inemez.`,
       );
     }
-    run(() => setResult(record.id, true, note, chosen, tender ? contractEnd : null), onClose);
+    run(() => setResult(record.id, true, note, chosen, tender ? contractEnd : null, tender ? contractStart : null), onClose);
   }
 
   return (
@@ -493,19 +497,36 @@ function ResultSheet({
                   : "Onaylanan kalemleri seçin ve onaylanan miktarı düzeltin."}
             </p>
             {tender && (
-              <div>
-                <label className="field-label" htmlFor="contract-end">
-                  Sözleşme bitiş tarihi
-                </label>
-                <input
-                  id="contract-end"
-                  type="date"
-                  value={contractEnd}
-                  onChange={(e) => (setBadEnd(false), setContractEnd(e.target.value))}
-                  aria-invalid={badEnd || undefined}
-                  className="input"
-                />
-                <p className="mt-1 text-[12px] text-muted">Hastanenin sözleşmedeki tüm ürünleri alacağı son tarih.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="field-label" htmlFor="contract-start">
+                    İmza tarihi
+                  </label>
+                  <input
+                    id="contract-start"
+                    type="date"
+                    value={contractStart}
+                    onChange={(e) => (setBadDate(undefined), setContractStart(e.target.value))}
+                    aria-invalid={badDate === "start" || undefined}
+                    className="input"
+                  />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="contract-end">
+                    Bitiş tarihi
+                  </label>
+                  <input
+                    id="contract-end"
+                    type="date"
+                    value={contractEnd}
+                    onChange={(e) => (setBadDate(undefined), setContractEnd(e.target.value))}
+                    aria-invalid={badDate === "end" || undefined}
+                    className="input"
+                  />
+                </div>
+                <p className="col-span-2 -mt-1 text-[12px] text-muted">
+                  İmza tarihi sözleşmenin başlangıcıdır. Bitiş, hastanenin tüm ürünleri alacağı son tarihtir.
+                </p>
               </div>
             )}
             {lines.map((l) => {

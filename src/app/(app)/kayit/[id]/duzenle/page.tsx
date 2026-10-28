@@ -21,6 +21,7 @@ export default async function EditRecordPage({ params }: { params: Promise<{ id:
             id: r.id,
             type: r.type,
             record_date: r.record_date,
+            tender_time: r.tender_time ?? undefined,
             file_no: r.file_no ?? "",
             hospital: r.hospital,
             contact_name: r.contact_name ?? "",

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BadgeCheck, ChevronRight, Circle, Phone, Siren } from "lucide-react";
 import { formatDate, formatQty, singleTotal, todayIstanbul } from "@/lib/format";
-import { daysUntil, isFullyDelivered, type LineProgress, type SalesRecord } from "@/lib/types";
+import { daysUntil, tenderTime, isFullyDelivered, type LineProgress, type SalesRecord } from "@/lib/types";
 import { StatusBadge, TypeBadge, statusLabel } from "./status-badge";
 import { ContractTimeBar, ProgressBar } from "./line-progress";
 
@@ -36,6 +36,7 @@ export function RecordCard({
         <span className="text-xs text-muted">
           {tender ? "İhale: " : ""}
           {formatDate(record.record_date)}
+          {tender ? ` · ${tenderTime(record.tender_time)}` : ""}
         </span>
       </div>
 

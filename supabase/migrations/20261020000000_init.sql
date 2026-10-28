@@ -115,7 +115,8 @@ create table public.records (
   sample_note text,
   sample_sent_at timestamptz,             -- numune gönderildiği an
   sample_sent_by uuid references public.profiles (id) on delete set null,
-  -- İhale: record_date ihale tarihidir.
+  -- İhale: record_date ihale tarihi, tender_time ihale saati (girilmezse 09:00).
+  tender_time time,
   guarantee_paid_at timestamptz,          -- teminat yatırıldı
   guarantee_paid_by uuid references public.profiles (id) on delete set null,
   prices_entered_at timestamptz,          -- verdiğimiz fiyatlar girildi
@@ -368,7 +369,8 @@ create or replace function public.save_record(
   p_contact_phone text,
   p_contact_ext text,
   p_notes text,
-  p_lines jsonb
+  p_lines jsonb,
+  p_tender_time time default null
 )
 returns uuid
 language plpgsql
@@ -395,8 +397,10 @@ begin
     if v_status is null then
       raise exception 'Bu satış tipi henüz desteklenmiyor.';
     end if;
-    insert into records (type, status, record_date, file_no, hospital, contact_name, contact_phone, contact_ext, notes)
-    values (p_type, v_status, p_record_date, nullif(trim(p_file_no), ''), trim(p_hospital),
+    insert into records (type, status, record_date, tender_time, file_no, hospital, contact_name, contact_phone, contact_ext, notes)
+    values (p_type, v_status, p_record_date,
+            case when p_type = 'ihale_siparisi' then coalesce(p_tender_time, '09:00'::time) end,
+            nullif(trim(p_file_no), ''), trim(p_hospital),
             nullif(trim(p_contact_name), ''), nullif(trim(p_contact_phone), ''), nullif(trim(p_contact_ext), ''),
             nullif(trim(p_notes), ''))
     returning id into v_id;
@@ -406,6 +410,7 @@ begin
     end if;
     update records set
       record_date = p_record_date,
+      tender_time = case when type = 'ihale_siparisi' then coalesce(p_tender_time, '09:00'::time) end,
       file_no = nullif(trim(p_file_no), ''),
       hospital = trim(p_hospital),
       contact_name = nullif(trim(p_contact_name), ''),
@@ -541,7 +546,7 @@ end;
 $$;
 
 -- DT / İhale / Genel Satış sonucu (ilk giriş veya sonradan düzeltme). Genel satış yalnızca onaylanır.
--- İhalede onay = sözleşme: p_contract_end zorunludur, onaylanan miktar sözleşme miktarı (contract_qty) olur.
+-- İhalede onay = sözleşme: p_contract_end zorunludur, p_contract_start imza tarihidir (boşsa bugün), onaylanan miktar sözleşme miktarı (contract_qty) olur.
 -- p_lines (onayda): [{line_id, approved_qty}] — listede olmayan kalemler reddedilmiş sayılır.
 -- Sevkiyata aktarılmış miktarın altına inilemez.
 create or replace function public.set_result(
@@ -549,7 +554,8 @@ create or replace function public.set_result(
   p_approved boolean,
   p_note text,
   p_lines jsonb,
-  p_contract_end date default null
+  p_contract_end date default null,
+  p_contract_start date default null
 )
 returns void
 language plpgsql
@@ -576,6 +582,9 @@ begin
   end if;
   if p_approved and v_type = 'ihale_siparisi' and p_contract_end is null then
     raise exception 'Sözleşme bitiş tarihi girilmelidir.';
+  end if;
+  if p_approved and v_type = 'ihale_siparisi' and p_contract_end < coalesce(p_contract_start, current_date) then
+    raise exception 'Sözleşme bitiş tarihi imza tarihinden önce olamaz.';
   end if;
   if not p_approved and exists (select 1 from records where id = p_record_id and type = 'genel_siparis') then
     raise exception 'Genel satış reddedilemez.';
@@ -627,7 +636,7 @@ begin
                     else 'reddedildi'::public.record_status end,
       result_at = now(),
       result_note = nullif(trim(p_note), ''),
-      contract_start = case when v_type = 'ihale_siparisi' and p_approved then coalesce(contract_start, current_date) end,
+      contract_start = case when v_type = 'ihale_siparisi' and p_approved then coalesce(p_contract_start, current_date) end,
       contract_end = case when v_type = 'ihale_siparisi' and p_approved then p_contract_end end,
       contract_alarm_sent_at = case when contract_end is distinct from p_contract_end then null else contract_alarm_sent_at end
   where id = p_record_id;

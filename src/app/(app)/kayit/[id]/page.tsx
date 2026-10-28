@@ -9,6 +9,7 @@ import { telHref } from "@/lib/phone";
 import {
   RECORD_TYPE_LABEL,
   tenderCountdown,
+  tenderTime,
   type CallLog,
   type ContractAdjustment,
   type LineProgress,
@@ -133,6 +134,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
               <span className="text-[13px] text-white/75">
                 {tender ? "İhale tarihi: " : ""}
                 {formatDate(record.record_date)}
+                {tender ? ` · ${tenderTime(record.tender_time)}` : ""}
               </span>
             </div>
             <h2 className="mt-3 text-xl font-semibold leading-snug">{record.hospital}</h2>
@@ -181,7 +183,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
             {tender && record.status !== "onaylandi" && record.status !== "reddedildi" && (
               <div className="space-y-1.5 rounded-xl bg-canvas p-3 text-[13px]">
                 {record.status === "ihale_bekliyor" && (
-                  <p className="font-semibold text-teal-700">{tenderCountdown(record.record_date, today)}</p>
+                  <p className="font-semibold text-teal-700">{tenderCountdown(record.record_date, today, record.tender_time)}</p>
                 )}
                 <p className={`flex items-center gap-1.5 ${record.guarantee_paid_at ? "text-emerald-700" : "text-muted"}`}>
                   <BadgeCheck size={14} />
@@ -196,7 +198,9 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                     : "Fiyatlarımız henüz girilmedi"}
                 </p>
                 {record.status === "ihale_bekliyor" && (
-                  <p className="text-muted">İhaleden 3 gün önce mesai içinde 2 saatte bir, son gün saatte bir herkese hatırlatma gider.</p>
+                  <p className="text-muted">
+                    İhaleden 3 gün önce mesai içinde 2 saatte bir, son 24 saatte saatte bir herkese hatırlatma gider.
+                  </p>
                 )}
               </div>
             )}

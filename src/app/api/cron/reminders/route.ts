@@ -1,16 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendToAll } from "@/lib/push";
-import { isWorkingTime, REMINDER_INTERVAL_MS } from "@/lib/workhours";
+import { CONTRACT_ALARM_HOUR, isWorkingTime, istanbulHour, REMINDER_INTERVAL_MS } from "@/lib/workhours";
 import { todayIstanbul } from "@/lib/format";
-import { daysUntil } from "@/lib/types";
+import { daysUntil, tenderAt, tenderCountdown } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Hatırlatmalar: aranmamış doğrudan teminler, istenip henüz gönderilmemiş numuneler (DT ve ihale),
- * yaklaşan ihaleler (ihaleden 3 gün önce 2 saatte bir, son gün saatte bir) ve son ayına giren
- * ihale sözleşmeleri (bir kez). Supabase pg_cron (supabase/cron.sql) mesai saatlerinde 15 dakikada
+ * yaklaşan ihaleler (ihale saatinden 3 gün önce 2 saatte bir, son 24 saatte saatte bir) ve son ayındaki
+ * ihale sözleşmeleri (her gün 14:00'te bir kez). Supabase pg_cron (supabase/cron.sql) mesai saatlerinde 15 dakikada
  * bir çağırır; mesai dışında hiç bildirim gitmez.
  */
 async function handle(request: NextRequest) {
@@ -80,67 +80,75 @@ async function handle(request: NextRequest) {
     );
   }
 
-  // Yaklaşan ihaleler: ihaleden 3 gün önce başlar (2 saatte bir); son gün (ihaleden bir gün önce) saatte bir.
+  // Yaklaşan ihaleler: ihale saatinden 72 saat önce başlar (2 saatte bir), son 24 saatte saatte bir; ihale saatinde durur.
   const today = todayIstanbul();
   const addDays = (n: number) => new Date(Date.parse(today) + n * 86_400_000).toISOString().slice(0, 10);
+  const nowMs = Date.now();
   const { data: tenders, error: tenderError } = await admin
     .from("records")
-    .select("id, hospital, file_no, record_date, guarantee_paid_at, prices_entered_at, last_reminded_at")
+    .select("id, hospital, file_no, record_date, tender_time, guarantee_paid_at, prices_entered_at, last_reminded_at")
     .eq("type", "ihale_siparisi")
     .eq("status", "ihale_bekliyor")
-    .gte("record_date", addDays(1))
+    .gte("record_date", today)
     .lte("record_date", addDays(3))
     .order("record_date", { ascending: true });
   if (tenderError) return NextResponse.json({ error: tenderError.message }, { status: 500 });
+  const DAY_MS = 24 * 60 * 60 * 1000;
   const tenderDue = (tenders ?? []).filter((t) => {
-    const interval = daysUntil(t.record_date, today) <= 1 ? 60 * 60 * 1000 : REMINDER_INTERVAL_MS;
-    return !t.last_reminded_at || Date.parse(t.last_reminded_at) <= Date.now() - interval + 60_000;
+    const left = tenderAt(t.record_date, t.tender_time) - nowMs;
+    if (left <= 0 || left > 3 * DAY_MS) return false;
+    const interval = left <= DAY_MS ? 60 * 60 * 1000 : REMINDER_INTERVAL_MS;
+    return !t.last_reminded_at || Date.parse(t.last_reminded_at) <= nowMs - interval + 60_000;
   });
   for (const t of tenderDue) {
-    const d = daysUntil(t.record_date, today);
+    const lastDay = tenderAt(t.record_date, t.tender_time) - nowMs <= DAY_MS;
     const missing = [!t.guarantee_paid_at && "teminat yatırılmadı", !t.prices_entered_at && "fiyatlarımız girilmedi"].filter(Boolean);
     payloads.push({
-      title: d <= 1 ? `İhale yarın: ${t.hospital}` : `İhaleye ${d} gün kaldı: ${t.hospital}`,
-      body:
-        d <= 1
-          ? missing.length
-            ? `Bugün son gün: ${missing.join(", ")}.`
-            : "Teminat yatırıldı, fiyatlar girildi. Evrakları son kez kontrol edin."
-          : `${t.file_no ? `${t.file_no} · ` : ""}Şartname ve evrakları inceleyin, gelen evrakı hastaneye gönderin.`,
+      title: `${tenderCountdown(t.record_date, today, t.tender_time, nowMs)}: ${t.hospital}`,
+      body: lastDay
+        ? missing.length
+          ? `Son gün: ${missing.join(", ")}.`
+          : "Teminat yatırıldı, fiyatlar girildi. Evrakları son kez kontrol edin."
+        : `${t.file_no ? `${t.file_no} · ` : ""}Şartname ve evrakları inceleyin, gelen evrakı hastaneye gönderin.`,
       url: `/kayit/${t.id}`,
       tag: `ihale-${t.id}`,
     });
   }
 
-  // Sözleşmesinin son ayına giren ihaleler: kalan ürünler için hastaneyle iletişime geçilmeli (bir kez bildirilir).
-  const { data: contracts, error: contractError } = await admin
-    .from("records")
-    .select("id, hospital, file_no, contract_end")
-    .eq("type", "ihale_siparisi")
-    .eq("status", "onaylandi")
-    .is("contract_alarm_sent_at", null)
-    .lte("contract_end", addDays(30));
-  if (contractError) return NextResponse.json({ error: contractError.message }, { status: 500 });
+  // Sözleşmesinin son ayındaki ihaleler: kalan ürünler için hastaneyle iletişime geçilmeli.
+  // Son ayın her günü saat 14:00'te bir kez bildirilir (contract_alarm_sent_at bugünün tarihinden önceyse).
   let alarmIds: string[] = [];
-  if (contracts?.length) {
-    const { data: prog } = await admin
-      .from("line_progress")
-      .select("record_id, remaining")
-      .in(
-        "record_id",
-        contracts.map((c) => c.id),
-      );
-    const open = new Set((prog ?? []).filter((p) => Number(p.remaining) > 0).map((p) => p.record_id));
-    const alarms = contracts.filter((c) => open.has(c.id));
-    alarmIds = alarms.map((c) => c.id);
-    for (const c of alarms) {
-      const left = Math.max(daysUntil(c.contract_end!, today), 0);
-      payloads.push({
-        title: `Sözleşme son ayında: ${c.hospital}`,
-        body: `${left} gün kaldı. Kalan ürünleri hastanenin istemesi için iletişime geçin.`,
-        url: `/kayit/${c.id}`,
-        tag: `sozlesme-${c.id}`,
-      });
+  if (force || istanbulHour() >= CONTRACT_ALARM_HOUR) {
+    const todayStart = new Date(`${today}T00:00:00+03:00`).toISOString();
+    const { data: contracts, error: contractError } = await admin
+      .from("records")
+      .select("id, hospital, file_no, contract_end")
+      .eq("type", "ihale_siparisi")
+      .eq("status", "onaylandi")
+      .or(`contract_alarm_sent_at.is.null,contract_alarm_sent_at.lt.${todayStart}`)
+      .gte("contract_end", today)
+      .lte("contract_end", addDays(30));
+    if (contractError) return NextResponse.json({ error: contractError.message }, { status: 500 });
+    if (contracts?.length) {
+      const { data: prog } = await admin
+        .from("line_progress")
+        .select("record_id, remaining")
+        .in(
+          "record_id",
+          contracts.map((c) => c.id),
+        );
+      const open = new Set((prog ?? []).filter((p) => Number(p.remaining) > 0).map((p) => p.record_id));
+      const alarms = contracts.filter((c) => open.has(c.id));
+      alarmIds = alarms.map((c) => c.id);
+      for (const c of alarms) {
+        const left = daysUntil(c.contract_end!, today);
+        payloads.push({
+          title: `Sözleşme son ayında: ${c.hospital}`,
+          body: `${left ? `${left} gün kaldı` : "Bugün son gün"}. Kalan ürünleri hastanenin istemesi için iletişime geçin.`,
+          url: `/kayit/${c.id}`,
+          tag: `sozlesme-${c.id}`,
+        });
+      }
     }
   }
 

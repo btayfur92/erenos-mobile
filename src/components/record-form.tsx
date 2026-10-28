@@ -71,6 +71,7 @@ export function RecordForm({
       id: initial?.id,
       type,
       record_date: String(fd.get("record_date")),
+      tender_time: tender ? String(fd.get("tender_time") ?? "") : undefined,
       file_no: String(fd.get("file_no") ?? ""),
       hospital: String(fd.get("hospital") ?? ""),
       contact_name: String(fd.get("contact_name") ?? ""),
@@ -153,7 +154,23 @@ export function RecordForm({
             </label>
             <input id="record_date" name="record_date" type="date" required defaultValue={initial?.record_date} className="input" />
           </div>
-          <div>
+          {tender && (
+            <div>
+              <label className="field-label" htmlFor="tender_time">
+                İhale saati
+              </label>
+              <input
+                id="tender_time"
+                name="tender_time"
+                type="time"
+                step={300}
+                defaultValue={initial?.tender_time?.slice(0, 5) ?? ""}
+                className="input"
+              />
+              <p className="mt-1 text-[12px] text-muted">Boş bırakılırsa 09:00</p>
+            </div>
+          )}
+          <div className={tender ? "col-span-2" : undefined}>
             <label className="field-label" htmlFor="file_no">
               {tender ? "İhale no" : "Dosya / ihale no"}
             </label>

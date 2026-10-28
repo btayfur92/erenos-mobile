@@ -39,9 +39,10 @@ export function TypeBadge({ type }: { type: RecordType }) {
 }
 
 /** Genel satış onay bekler; ihale öncesi kalan gün, sözleşmeli ihale "Sözleşmeli" yazar. */
-export function statusLabel(record: Pick<SalesRecord, "type" | "status" | "record_date">) {
+export function statusLabel(record: Pick<SalesRecord, "type" | "status" | "record_date" | "tender_time">) {
   if (record.type === "genel_siparis" && record.status === "acik") return "Onay bekliyor";
-  if (record.type === "ihale_siparisi" && record.status === "ihale_bekliyor") return tenderCountdown(record.record_date, todayIstanbul());
+  if (record.type === "ihale_siparisi" && record.status === "ihale_bekliyor")
+    return tenderCountdown(record.record_date, todayIstanbul(), record.tender_time);
   if (record.type === "ihale_siparisi" && record.status === "onaylandi") return "Sözleşmeli";
   return undefined;
 }

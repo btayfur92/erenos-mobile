@@ -3,6 +3,13 @@ import { TIME_ZONE } from "./config";
 export const WORK_START_HOUR = 9;
 export const WORK_END_HOUR = 18;
 export const REMINDER_INTERVAL_MS = 2 * 60 * 60 * 1000;
+/** Sözleşmesi son ayında olan ihaleler için günlük bildirim saati (İstanbul). */
+export const CONTRACT_ALARM_HOUR = 14;
+
+/** İstanbul'da şu anki saat (0–23). */
+export function istanbulHour(now = new Date()) {
+  return Number(new Intl.DateTimeFormat("en-GB", { timeZone: TIME_ZONE, hour: "2-digit", hourCycle: "h23" }).format(now));
+}
 
 /** Hafta içi 09:00–18:00 (İstanbul) arasında mı? */
 export function isWorkingTime(now = new Date()) {

@@ -10,7 +10,8 @@ create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
 -- Hafta içi 09:00–18:00 (İstanbul = UTC+3 → 06:00–15:59 UTC), 15 dakikada bir.
--- Uygulama her kayıt için en fazla 2 saatte bir (ihalenin son gününde saatte bir) bildirim gönderir.
+-- Uygulama her kayıt için en fazla 2 saatte bir (ihaleye 24 saatten az kalınca saatte bir) bildirim gönderir;
+-- son ayındaki sözleşmeler her gün 14:00'te (11:00 UTC) bir kez bildirilir.
 select cron.schedule(
   'erenos-arama-hatirlatma',
   '*/15 6-15 * * 1-5',

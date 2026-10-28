@@ -48,6 +48,8 @@ export interface SalesRecord {
   guarantee_paid_at: string | null;
   guarantee_paid_by: string | null;
   prices_entered_at: string | null;
+  /** İhale saati ("HH:MM:SS"); ihale dışında null. */
+  tender_time: string | null;
   contract_start: string | null;
   contract_end: string | null;
   contract_alarm_sent_at: string | null;
@@ -235,8 +237,20 @@ export function inLastMonth(record: Pick<SalesRecord, "type" | "status" | "contr
   );
 }
 
-/** "İhaleye 3 gün kaldı" / "İhale bugün" / "İhale yapıldı" */
-export function tenderCountdown(date: string, today: string) {
+/** İhale saati "HH:MM" (girilmemişse 09:00). */
+export function tenderTime(time: string | null | undefined) {
+  return (time || "09:00").slice(0, 5);
+}
+
+/** İhale anı (Türkiye saati UTC+3, yaz saati uygulaması yok). */
+export function tenderAt(date: string, time: string | null | undefined) {
+  return Date.parse(`${date.slice(0, 10)}T${tenderTime(time)}:00+03:00`);
+}
+
+/** "İhaleye 3 gün kaldı" / "İhale yarın 10:30" / "İhale bugün 10:30" / "İhale yapıldı" */
+export function tenderCountdown(date: string, today: string, time?: string | null, now = Date.now()) {
   const d = daysUntil(date, today);
-  return d > 1 ? `İhaleye ${d} gün kaldı` : d === 1 ? "İhale yarın" : d === 0 ? "İhale bugün" : "İhale yapıldı";
+  if (d > 1) return `İhaleye ${d} gün kaldı`;
+  if (d === 1) return `İhale yarın ${tenderTime(time)}`;
+  return d === 0 && now < tenderAt(date, time) ? `İhale bugün ${tenderTime(time)}` : "İhale yapıldı";
 }

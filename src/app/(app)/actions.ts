@@ -43,6 +43,8 @@ export interface RecordInput {
   id?: string;
   type: RecordType;
   record_date: string;
+  /** İhale saati "HH:MM"; boşsa 09:00. */
+  tender_time?: string;
   file_no: string;
   hospital: string;
   contact_name: string;
@@ -76,6 +78,7 @@ export async function saveRecord(input: RecordInput): Promise<ActionResult> {
     p_contact_ext: ext,
     p_notes: input.notes,
     p_lines: lines,
+    p_tender_time: input.type === "ihale_siparisi" ? input.tender_time || "09:00" : null,
   });
   if (error) return fail(error);
 
@@ -155,12 +158,16 @@ export async function setResult(
   note: string,
   lines: { line_id: string; approved_qty: number }[],
   contractEnd: string | null = null,
+  contractStart: string | null = null,
 ): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
   const { data: before } = await supabase.from("records").select("status, type").eq("id", recordId).single();
   const wasDecided = before?.status === "onaylandi" || before?.status === "reddedildi";
   const tender = before?.type === "ihale_siparisi";
+  if (tender && approved && !contractStart) return { ok: false, error: "Sözleşme imza tarihini girin." };
   if (tender && approved && !contractEnd) return { ok: false, error: "Sözleşme bitiş tarihini girin." };
+  if (tender && approved && contractEnd! < contractStart!)
+    return { ok: false, error: "Sözleşme bitiş tarihi imza tarihinden önce olamaz." };
   const label = before?.type === "genel_siparis" ? "Genel satış" : tender ? "İhale" : "Doğrudan temin";
   const { error } = await supabase.rpc("set_result", {
     p_record_id: recordId,
@@ -168,6 +175,7 @@ export async function setResult(
     p_note: note,
     p_lines: approved ? lines : null,
     p_contract_end: tender && approved ? contractEnd : null,
+    p_contract_start: tender && approved ? contractStart : null,
   });
   if (error) return fail(error);
 
