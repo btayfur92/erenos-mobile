@@ -29,8 +29,8 @@ export function StatusBadge({ status, label }: { status: RecordStatus; label?: s
 const TYPE_BADGE: Partial<Record<RecordType, [string, string]>> = {
   dogrudan_temin: ["DOĞRUDAN TEMİN", "bg-brand-600 text-white"],
   genel_siparis: ["GENEL SATIŞ", "bg-ink text-white"],
-  ihale_siparisi: ["İHALE", "bg-teal-600 text-white"],
-  dmo_ihalesi: ["DMO İHALESİ", "bg-sky-700 text-white"],
+  ihale_siparisi: ["İHALE", "bg-accent-600 text-white"],
+  dmo_ihalesi: ["DMO İHALESİ", "bg-emerald-600 text-white"],
   yaklasik_maliyet: ["YAKLAŞIK MALİYET", "bg-brand-100 text-brand-700"],
 };
 
