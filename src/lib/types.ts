@@ -181,6 +181,8 @@ export interface Profile {
   full_name: string;
   is_admin: boolean;
   active: boolean;
+  /** Anımsatıcıları her gün 08:00–22:00 arasında al (kapalıyken hafta içi mesai saatleri). */
+  extended_hours: boolean;
   created_at: string;
 }
 
@@ -254,3 +256,37 @@ export function tenderCountdown(date: string, today: string, time?: string | nul
   if (d === 1) return `İhale yarın ${tenderTime(time)}`;
   return d === 0 && now < tenderAt(date, time) ? `İhale bugün ${tenderTime(time)}` : "İhale yapıldı";
 }
+
+// ---------------------------------------------------------------------------
+// Anımsatıcılar
+// ---------------------------------------------------------------------------
+
+export interface ReminderRecipient {
+  reminder_id: string;
+  user_id: string;
+  done_at: string | null;
+  last_sent_at: string | null;
+}
+
+export interface Reminder {
+  id: string;
+  title: string;
+  detail: string | null;
+  starts_at: string;
+  interval_minutes: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string | null;
+  reminder_recipients?: ReminderRecipient[];
+}
+
+export const REMINDER_INTERVALS: { minutes: number; label: string }[] = [
+  { minutes: 60, label: "Saatte bir" },
+  { minutes: 120, label: "2 saatte bir" },
+  { minutes: 180, label: "3 saatte bir" },
+  { minutes: 240, label: "4 saatte bir" },
+  { minutes: 1440, label: "Günde bir" },
+  { minutes: 10080, label: "Haftada bir" },
+];
+
+export const intervalLabel = (minutes: number) => REMINDER_INTERVALS.find((i) => i.minutes === minutes)?.label ?? `${minutes} dakikada bir`;

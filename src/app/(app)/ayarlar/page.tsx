@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { logout } from "@/app/login/actions";
 import { PageHeader } from "@/components/page-header";
 import { PushToggle } from "@/components/push-toggle";
+import { ExtendedHoursToggle } from "@/components/reminders";
 
 export const metadata: Metadata = { title: "Ayarlar" };
 
@@ -36,6 +37,10 @@ export default async function SettingsPage() {
 
         <div className="card">
           <PushToggle />
+        </div>
+
+        <div className="card">
+          <ExtendedHoursToggle initial={profile.extended_hours} />
         </div>
 
         {profile.is_admin && (

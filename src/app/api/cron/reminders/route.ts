@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendToAll } from "@/lib/push";
-import { CONTRACT_ALARM_HOUR, isWorkingTime, istanbulHour, REMINDER_INTERVAL_MS } from "@/lib/workhours";
+import { CONTRACT_ALARM_HOUR, isExtendedTime, isWorkingTime, istanbulHour, REMINDER_INTERVAL_MS } from "@/lib/workhours";
 import { todayIstanbul } from "@/lib/format";
 import { daysUntil, tenderAt, tenderCountdown } from "@/lib/types";
 
@@ -10,8 +10,9 @@ export const dynamic = "force-dynamic";
 /**
  * Hatırlatmalar: aranmamış doğrudan teminler, istenip henüz gönderilmemiş numuneler (DT ve ihale),
  * yaklaşan ihaleler (ihale saatinden 3 gün önce 2 saatte bir, son 24 saatte saatte bir) ve son ayındaki
- * ihale sözleşmeleri (her gün 14:00'te bir kez). Supabase pg_cron (supabase/cron.sql) mesai saatlerinde 15 dakikada
- * bir çağırır; mesai dışında hiç bildirim gitmez.
+ * ihale sözleşmeleri (her gün 14:00'te bir kez) mesai saatlerinde herkese gider. Kişiye özel anımsatıcılar yalnızca
+ * eklenen kişilere, kişinin ayarına göre mesai saatlerinde ya da her gün 08:00–22:00 arasında gider.
+ * Supabase pg_cron (supabase/cron.sql) her gün 08:00–22:00 arasında 15 dakikada bir çağırır.
  */
 async function handle(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -19,9 +20,13 @@ async function handle(request: NextRequest) {
   if (!secret || given !== secret) return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
 
   const force = request.nextUrl.searchParams.get("force") === "1";
-  if (!force && !isWorkingTime()) return NextResponse.json({ skipped: "mesai dışı" });
-
   const admin = createAdminClient();
+
+  // Anımsatıcılar her kişinin kendi saat aralığına göre gider (mesai ya da 08:00–22:00), bu yüzden önce çalışır.
+  const personal = await sendPersonalReminders(admin, force);
+  if ("error" in personal) return NextResponse.json({ error: personal.error }, { status: 500 });
+  if (!force && !isWorkingTime()) return NextResponse.json({ skipped: "mesai dışı", personal: personal.sent });
+
   const cutoff = new Date(Date.now() - REMINDER_INTERVAL_MS + 60_000).toISOString(); // 1 dk tolerans
   const dueFor = (status: "arama_bekliyor" | "numune_istendi") =>
     admin
@@ -152,7 +157,7 @@ async function handle(request: NextRequest) {
     }
   }
 
-  if (!payloads.length) return NextResponse.json({ due: 0 });
+  if (!payloads.length) return NextResponse.json({ due: 0, personal: personal.sent });
 
   const results = [];
   for (const payload of payloads) results.push(await sendToAll(payload));
@@ -166,8 +171,60 @@ async function handle(request: NextRequest) {
     samples: sampleDue.length,
     tenders: tenderDue.length,
     contracts: alarmIds.length,
+    personal: personal.sent,
     results,
   });
+}
+
+type Admin = ReturnType<typeof createAdminClient>;
+
+/**
+ * Anımsatıcılar: başlangıç anından itibaren her aralıkta (starts_at + k * aralık) bir bildirim.
+ * Kişinin saat aralığı dışında kalan aralıklar, aralık açılınca bir kez gönderilir. Tamamlayan kişiye gitmez.
+ */
+async function sendPersonalReminders(admin: Admin, force: boolean): Promise<{ sent: number } | { error: string }> {
+  const nowIso = new Date().toISOString();
+  const { data, error } = await admin
+    .from("reminder_recipients")
+    .select(
+      "reminder_id, user_id, last_sent_at, reminders!inner(id, title, detail, starts_at, interval_minutes), profiles!inner(extended_hours, active)",
+    )
+    .is("done_at", null)
+    .lte("reminders.starts_at", nowIso)
+    .eq("profiles.active", true);
+  if (error) return { error: error.message };
+
+  type Row = {
+    reminder_id: string;
+    user_id: string;
+    last_sent_at: string | null;
+    reminders: { id: string; title: string; detail: string | null; starts_at: string; interval_minutes: number };
+    profiles: { extended_hours: boolean; active: boolean };
+  };
+  const now = Date.now();
+  const working = isWorkingTime(),
+    extended = isExtendedTime();
+  const due = ((data ?? []) as unknown as Row[]).filter((r) => {
+    if (!force && !(r.profiles.extended_hours ? extended : working)) return false;
+    const start = Date.parse(r.reminders.starts_at),
+      step = r.reminders.interval_minutes * 60_000;
+    const latestSlot = start + Math.floor((now - start) / step) * step;
+    return !r.last_sent_at || Date.parse(r.last_sent_at) < latestSlot;
+  });
+
+  for (const r of due) {
+    await sendToAll(
+      {
+        title: `Anımsatıcı: ${r.reminders.title}`,
+        body: r.reminders.detail || "Tamamladığınızda uygulamadan “Tamamladım” deyin.",
+        url: "/animsaticilar",
+        tag: `animsatici-${r.reminder_id}`,
+      },
+      { onlyUserId: r.user_id },
+    );
+    await admin.from("reminder_recipients").update({ last_sent_at: nowIso }).eq("reminder_id", r.reminder_id).eq("user_id", r.user_id);
+  }
+  return { sent: due.length };
 }
 
 export const GET = handle;

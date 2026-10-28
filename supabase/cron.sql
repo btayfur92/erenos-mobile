@@ -1,4 +1,4 @@
--- Hatırlatmaları (arama, numune, yaklaşan ihale, sözleşme son ayı) tetikleyen zamanlanmış iş (Supabase pg_cron + pg_net).
+-- Hatırlatmaları (arama, numune, yaklaşan ihale, sözleşme son ayı, anımsatıcılar) tetikleyen zamanlanmış iş (Supabase pg_cron + pg_net).
 -- Vercel'in ücretsiz planı günde yalnızca bir cron çalıştırdığı için zamanlama Supabase tarafında.
 --
 -- Kurulum: Supabase > Database > Extensions'tan "pg_cron" ve "pg_net"i açın,
@@ -9,12 +9,13 @@
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
--- Hafta içi 09:00–18:00 (İstanbul = UTC+3 → 06:00–15:59 UTC), 15 dakikada bir.
+-- Her gün 08:00–22:45 (İstanbul = UTC+3 → 05:00–19:59 UTC), 15 dakikada bir. Satış hatırlatmaları
+-- yalnızca hafta içi 09:00–18:00'de, anımsatıcılar kişinin ayarına göre mesai ya da 08:00–22:00 arasında gider.
 -- Uygulama her kayıt için en fazla 2 saatte bir (ihaleye 24 saatten az kalınca saatte bir) bildirim gönderir;
 -- son ayındaki sözleşmeler her gün 14:00'te (11:00 UTC) bir kez bildirilir.
 select cron.schedule(
   'erenos-arama-hatirlatma',
-  '*/15 6-15 * * 1-5',
+  '*/15 5-19 * * *',
   $$
   select net.http_post(
     url := '<SITE>/api/cron/reminders',

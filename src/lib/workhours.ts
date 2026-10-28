@@ -26,3 +26,18 @@ export function isWorkingTime(now = new Date()) {
   const minutes = Number(get("hour")) * 60 + Number(get("minute"));
   return minutes >= WORK_START_HOUR * 60 && minutes <= WORK_END_HOUR * 60;
 }
+
+/** Anımsatıcılarda "mesai dışında da al" açıkken: her gün 08:00–22:00 (İstanbul). */
+export const EXTENDED_START_HOUR = 8;
+export const EXTENDED_END_HOUR = 22;
+export function isExtendedTime(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  const minutes = get("hour") * 60 + get("minute");
+  return minutes >= EXTENDED_START_HOUR * 60 && minutes <= EXTENDED_END_HOUR * 60;
+}

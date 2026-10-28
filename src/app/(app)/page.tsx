@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, Clock, FileSignature, FileText, Gavel, Search, XCircle } from "lucide-react";
+import { AlarmClock, CheckCircle2, Clock, FileSignature, FileText, Gavel, Search, XCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
 import { getRates } from "@/lib/fx";
@@ -31,7 +31,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const today = todayIstanbul();
   const monthAhead = new Date(Date.parse(today) + 30 * 86_400_000).toISOString().slice(0, 10);
   const resolved = d === "red" ? "reddedildi" : d === "bekle" && f === "ym" ? "acik" : "onaylandi";
-  const { supabase, profile } = await requireUser();
+  const { supabase, user, profile } = await requireUser();
 
   let query = supabase
     .from("records")
@@ -101,10 +101,34 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   if (f === "gundem") list = list.filter((r) => !(r.status === "onaylandi" && isFullyDelivered(r, progress)));
 
   const firstName = (profile.full_name || profile.username).split(" ")[0];
+  // Anımsatıcı rozeti: bana eklenmiş, başlamış ve henüz tamamlamadığım anımsatıcılar.
+  const { count: myReminders } = await supabase
+    .from("reminder_recipients")
+    .select("reminder_id, reminders!inner(starts_at)", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .is("done_at", null)
+    .lte("reminders.starts_at", new Date().toISOString());
 
   return (
     <>
-      <PageHeader title="Satış Takibi" subtitle={`Merhaba ${firstName}`} />
+      <PageHeader
+        title="Satış Takibi"
+        subtitle={`Merhaba ${firstName}`}
+        action={
+          <Link
+            href="/animsaticilar"
+            className="relative grid h-10 w-10 place-items-center rounded-xl text-ink hover:bg-canvas"
+            aria-label={myReminders ? `Anımsatıcılar, ${myReminders} bekleyen` : "Anımsatıcılar"}
+          >
+            <AlarmClock size={22} />
+            {!!myReminders && (
+              <span className="absolute right-0.5 top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-accent-600 px-1 text-[11px] font-bold text-white ring-2 ring-white">
+                {myReminders}
+              </span>
+            )}
+          </Link>
+        }
+      />
       <main className="mx-auto max-w-xl px-4 pt-4">
         {!!waitingCount && (
           <Link

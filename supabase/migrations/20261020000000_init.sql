@@ -47,6 +47,7 @@ create table public.profiles (
   full_name text not null default '',
   is_admin boolean not null default false,
   active boolean not null default true,
+  extended_hours boolean not null default false,  -- anımsatıcıları 08:00–22:00 arasında (her gün) al
   created_at timestamptz not null default now()
 );
 
@@ -909,3 +910,136 @@ create policy "push_own" on public.push_subscriptions
   for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 grant select on public.line_progress to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Anımsatıcılar: kişiye özel hatırlatmalar. Yalnızca seçilen kişilere bildirim gider;
+-- her kişi kendi hesabından "Tamamladım" deyince onun bildirimleri durur.
+-- ---------------------------------------------------------------------------
+
+create table public.reminders (
+  id uuid primary key default gen_random_uuid(),
+  title text not null check (length(trim(title)) > 0),
+  detail text,
+  starts_at timestamptz not null,               -- ilk hatırlatma anı; sonrakiler starts_at + k * aralık
+  interval_minutes int not null check (interval_minutes in (60, 120, 180, 240, 1440, 10080)),
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
+);
+
+create table public.reminder_recipients (
+  reminder_id uuid not null references public.reminders (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  done_at timestamptz,                          -- kişi tamamladı; bildirimleri durur
+  last_sent_at timestamptz,                     -- son bildirim (zamanlanmış iş günceller)
+  primary key (reminder_id, user_id)
+);
+create index reminder_recipients_user_idx on public.reminder_recipients (user_id);
+
+-- RLS özyinelemesini önlemek için üyelik kontrolleri security definer.
+create or replace function public.is_reminder_member(p_reminder_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from reminder_recipients where reminder_id = p_reminder_id and user_id = auth.uid())
+$$;
+create or replace function public.is_reminder_owner(p_reminder_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from reminders where id = p_reminder_id and created_by = auth.uid())
+$$;
+
+alter table public.reminders enable row level security;
+alter table public.reminder_recipients enable row level security;
+
+-- Anımsatıcıyı yalnızca oluşturan ve eklenen kişiler görür; yalnızca oluşturan düzenler/siler.
+create policy "reminders_read" on public.reminders
+  for select to authenticated using (public.is_active_user() and (created_by = auth.uid() or public.is_reminder_member(id)));
+create policy "reminders_insert" on public.reminders
+  for insert to authenticated with check (public.is_active_user() and created_by = auth.uid());
+create policy "reminders_owner_update" on public.reminders
+  for update to authenticated using (public.is_active_user() and created_by = auth.uid());
+create policy "reminders_owner_delete" on public.reminders
+  for delete to authenticated using (public.is_active_user() and created_by = auth.uid());
+create policy "reminder_recipients_read" on public.reminder_recipients
+  for select to authenticated using (
+    public.is_active_user() and (user_id = auth.uid() or public.is_reminder_member(reminder_id) or public.is_reminder_owner(reminder_id)));
+create policy "reminder_recipients_owner_write" on public.reminder_recipients
+  for all to authenticated using (public.is_active_user() and public.is_reminder_owner(reminder_id))
+  with check (public.is_active_user() and public.is_reminder_owner(reminder_id));
+
+-- Anımsatıcı oluşturur / günceller. p_users: bildirim gidecek kişiler (en az biri).
+-- Düzenlemede listeden çıkarılan kişiler silinir; kalanların "tamamladı" bilgisi korunur,
+-- zamanlama değiştiği için son gönderim sıfırlanır.
+create or replace function public.save_reminder(
+  p_id uuid,
+  p_title text,
+  p_detail text,
+  p_starts_at timestamptz,
+  p_interval_minutes int,
+  p_users uuid[]
+)
+returns uuid
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_id uuid := p_id;
+begin
+  if coalesce(trim(p_title), '') = '' then
+    raise exception 'Başlık girilmelidir.';
+  end if;
+  if coalesce(array_length(p_users, 1), 0) = 0 then
+    raise exception 'Bildirim gidecek en az bir kişi seçilmelidir.';
+  end if;
+  if exists (select 1 from unnest(p_users) u where not exists (select 1 from profiles where id = u and active)) then
+    raise exception 'Seçilen kişilerden biri bulunamadı ya da pasif.';
+  end if;
+
+  if v_id is null then
+    insert into reminders (title, detail, starts_at, interval_minutes)
+    values (trim(p_title), nullif(trim(p_detail), ''), p_starts_at, p_interval_minutes)
+    returning id into v_id;
+  else
+    update reminders set title = trim(p_title), detail = nullif(trim(p_detail), ''), starts_at = p_starts_at,
+      interval_minutes = p_interval_minutes, updated_at = now()
+    where id = v_id;
+    if not found then
+      raise exception 'Anımsatıcıyı yalnızca oluşturan kişi düzenleyebilir.';
+    end if;
+    delete from reminder_recipients where reminder_id = v_id and user_id <> all (p_users);
+    update reminder_recipients set last_sent_at = null where reminder_id = v_id;
+  end if;
+  insert into reminder_recipients (reminder_id, user_id)
+  select v_id, u from (select distinct unnest(p_users) as u) x
+  on conflict do nothing;
+  return v_id;
+end;
+$$;
+
+-- Kişi kendi hesabından tamamladı (p_done=false geri alır).
+create or replace function public.set_reminder_done(p_reminder_id uuid, p_done boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_active_user() then
+    raise exception 'Yetkisiz.';
+  end if;
+  update reminder_recipients set done_at = case when p_done then now() end
+  where reminder_id = p_reminder_id and user_id = auth.uid();
+  if not found then
+    raise exception 'Bu anımsatıcı size eklenmemiş.';
+  end if;
+end;
+$$;
+
+-- Kullanıcının kendi ayarı: anımsatıcıları mesai dışında da (her gün 08:00–22:00) al.
+create or replace function public.set_extended_hours(p_on boolean)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update profiles set extended_hours = p_on where id = auth.uid() and active;
+$$;

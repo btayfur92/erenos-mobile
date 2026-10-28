@@ -23,10 +23,10 @@ function configure() {
 }
 
 /**
- * Bildirimi tüm kullanıcıların tüm cihazlarına gönderir.
+ * Bildirimi tüm kullanıcıların tüm cihazlarına gönderir (onlyUserIds verilirse yalnızca o kişilere).
  * excludeUserId verilirse işlemi yapan kişinin kendi cihazları atlanır.
  */
-export async function sendToAll(payload: PushPayload, opts: { excludeUserId?: string; onlyUserId?: string } = {}) {
+export async function sendToAll(payload: PushPayload, opts: { excludeUserId?: string; onlyUserId?: string; onlyUserIds?: string[] } = {}) {
   if (!configure()) {
     console.warn("[push] VAPID anahtarları tanımlı değil, bildirim gönderilmedi.");
     return { sent: 0, failed: 0 };
@@ -35,6 +35,7 @@ export async function sendToAll(payload: PushPayload, opts: { excludeUserId?: st
   let query = admin.from("push_subscriptions").select("id, endpoint, p256dh, auth, user_id");
   if (opts.excludeUserId) query = query.neq("user_id", opts.excludeUserId);
   if (opts.onlyUserId) query = query.eq("user_id", opts.onlyUserId);
+  if (opts.onlyUserIds) query = query.in("user_id", opts.onlyUserIds);
   const { data: subs, error } = await query;
   if (error || !subs) {
     console.error("[push] abonelikler okunamadı", error);

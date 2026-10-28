@@ -4,7 +4,7 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { sendToAll, type PushPayload } from "@/lib/push";
-import { RECORD_TYPE_LABEL, type ManualDirection, type RecordType } from "@/lib/types";
+import { RECORD_TYPE_LABEL, REMINDER_INTERVALS, type ManualDirection, type RecordType } from "@/lib/types";
 import { formatQty } from "@/lib/format";
 import { normalizePhone, PHONE_ERROR } from "@/lib/phone";
 
@@ -527,4 +527,87 @@ export async function saveMeeting(input: MeetingInput): Promise<ActionResult> {
   notify({ title: `Yeni görüşme notu: ${fields.hospital}`, body: `${fields.department} · ${excerpt}`, url: "/gorusmeler" }, user.id);
   refresh();
   return { ok: true, id: data.id };
+}
+
+// ---------------------------------------------------------------------------
+// Anımsatıcılar (yalnızca seçilen kişilere bildirim)
+// ---------------------------------------------------------------------------
+
+export interface ReminderInput {
+  id?: string;
+  title: string;
+  detail: string;
+  /** "YYYY-MM-DD" ve "HH:MM" (İstanbul) */
+  start_date: string;
+  start_time: string;
+  interval_minutes: number;
+  users: string[];
+}
+
+export async function saveReminder(input: ReminderInput): Promise<ActionResult> {
+  const { supabase, user, profile } = await requireUser();
+  if (!input.title.trim()) return { ok: false, error: "Başlık girin." };
+  if (!input.users.length) return { ok: false, error: "Bildirim gidecek en az bir kişi seçin." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.start_date)) return { ok: false, error: "Başlangıç tarihini seçin." };
+  if (!/^\d{2}:\d{2}$/.test(input.start_time)) return { ok: false, error: "Başlangıç saatini seçin." };
+  if (!REMINDER_INTERVALS.some((i) => i.minutes === input.interval_minutes)) return { ok: false, error: "Sıklığı seçin." };
+  const startsAt = new Date(`${input.start_date}T${input.start_time}:00+03:00`).toISOString();
+
+  let before: string[] = [];
+  if (input.id) {
+    const { data } = await supabase.from("reminder_recipients").select("user_id").eq("reminder_id", input.id);
+    before = (data ?? []).map((r) => r.user_id);
+  }
+  const { data, error } = await supabase.rpc("save_reminder", {
+    p_id: input.id ?? null,
+    p_title: input.title,
+    p_detail: input.detail,
+    p_starts_at: startsAt,
+    p_interval_minutes: input.interval_minutes,
+    p_users: input.users,
+  });
+  if (error) return fail(error);
+
+  // Yeni eklenen kişilere (oluşturan hariç) bilgi bildirimi; hatırlatmalar başlangıç anından itibaren gelir.
+  const added = input.users.filter((u) => u !== user.id && !before.includes(u));
+  if (added.length) {
+    const who = profile.full_name || profile.username;
+    after(async () => {
+      try {
+        await sendToAll(
+          { title: `${who} size bir anımsatıcı ekledi`, body: input.title.trim(), url: "/animsaticilar", tag: `animsatici-${data}` },
+          { onlyUserIds: added },
+        );
+      } catch (err) {
+        console.error("[push] bildirim gönderilemedi", err);
+      }
+    });
+  }
+  refresh();
+  return { ok: true, id: data as string };
+}
+
+export async function setReminderDone(reminderId: string, done: boolean): Promise<ActionResult> {
+  const { supabase } = await requireUser();
+  const { error } = await supabase.rpc("set_reminder_done", { p_reminder_id: reminderId, p_done: done });
+  if (error) return fail(error);
+  refresh();
+  return { ok: true };
+}
+
+export async function deleteReminder(reminderId: string): Promise<ActionResult> {
+  const { supabase } = await requireUser();
+  const { error, count } = await supabase.from("reminders").delete({ count: "exact" }).eq("id", reminderId);
+  if (error) return fail(error);
+  if (!count) return { ok: false, error: "Anımsatıcıyı yalnızca oluşturan kişi silebilir." };
+  refresh();
+  return { ok: true };
+}
+
+export async function setExtendedHours(on: boolean): Promise<ActionResult> {
+  const { supabase } = await requireUser();
+  const { error } = await supabase.rpc("set_extended_hours", { p_on: on });
+  if (error) return fail(error);
+  refresh();
+  return { ok: true };
 }
