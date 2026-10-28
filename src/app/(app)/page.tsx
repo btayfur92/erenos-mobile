@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, BellRing, CheckCircle2, Clock, FileSignature, FileText, Gavel, Search, XCircle } from "lucide-react";
+import { AlarmClock, CheckCircle2, Clock, FileSignature, FileText, Gavel, Search, XCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
 import { getRates } from "@/lib/fx";
@@ -125,7 +125,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             }`}
             aria-label={myReminders ? `Anımsatıcılar, ${myReminders} bekleyen` : "Anımsatıcılar"}
           >
-            {myReminders ? <BellRing size={21} /> : <Bell size={21} />}
+            <AlarmClock size={21} />
             {!!myReminders && (
               <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-accent-600 px-1 text-[11px] font-bold text-white ring-2 ring-white">
                 {myReminders}

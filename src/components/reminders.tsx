@@ -98,7 +98,9 @@ export function ReminderCard({ reminder: r, me, people }: { reminder: Reminder; 
         {recipients.map((x) => (
           // İlk tamamlayan yeşil, sonrakiler siyah görünür.
           <div key={x.user_id} className="flex items-center justify-between gap-2 text-[13px]">
-            <span className={`truncate ${x.done_at ? "text-ink" : "text-ink/80"}`}>
+            <span
+              className={`truncate ${x.done_at && x.done_at === firstDone ? "font-medium text-emerald-700" : x.done_at ? "text-ink" : "text-ink/80"}`}
+            >
               {x.user_id === me ? "Siz" : (names[x.user_id] ?? "—")}
             </span>
             {x.done_at ? (
