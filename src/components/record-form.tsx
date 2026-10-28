@@ -367,9 +367,11 @@ export function RecordForm({
         </div>
         {dmo && (
           <datalist id="dmo-regions">
-            {[...new Set([...lines.map((l) => l.region.trim()).filter(Boolean), ...DMO_CITIES])].map((r) => (
-              <option key={r} value={r} />
-            ))}
+            {[...new Set([...lines.map((l) => l.region.trim()).filter(Boolean), ...DMO_CITIES])]
+              .sort((a, b) => a.localeCompare(b, "tr"))
+              .map((r) => (
+                <option key={r} value={r} />
+              ))}
           </datalist>
         )}
         {!lockedLines && (
