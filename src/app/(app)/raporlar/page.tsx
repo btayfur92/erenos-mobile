@@ -99,8 +99,8 @@ const priceText = (l: RecordLine) =>
  * Raporlar: hastane/müşteri seçilince ona verilen tüm fiyatlar (tarih, sonuç, rakip fiyatları) ve görüşmeleri;
  * ürün seçilince hangi hastane/müşteriye hangi tarihte hangi fiyat ve adetle verildiği, sonucu ve rakip fiyatları.
  */
-export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ t?: string; id?: string }> }) {
-  const { t, id } = await searchParams;
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ t?: string; id?: string; v?: string }> }) {
+  const { t, id, v } = await searchParams;
   const kind = t === "urun" ? "urun" : "musteri";
   const { supabase } = await requireUser();
   const { customers, products } = await fetchCards(supabase);
@@ -186,6 +186,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         .returns<Meeting[]>(),
     ]);
     const records = recs ?? [];
+    const view = v === "gorusmeler" ? "gorusmeler" : "urunler";
     const allLines = records.flatMap((r) => (r.record_lines ?? []).map((l) => outcome(r, l)));
 
     return (
@@ -194,50 +195,73 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         <main className="mx-auto max-w-xl px-4 pt-4">
           {tabs}
           {head}
-          <div className="mt-3 grid grid-cols-4 gap-2">
-            <Stat value={records.length} label="Teklif" />
-            <Stat value={allLines.filter((o) => o === "onay").length} label="Onaylanan kalem" cls="text-emerald-700" />
-            <Stat value={allLines.filter((o) => o === "red").length} label="Reddedilen kalem" cls="text-accent-600" />
-            <Stat value={meetings?.length ?? 0} label="Görüşme" cls="text-brand-600" />
+          <div className="mt-3 grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
+            {(
+              [
+                ["urunler", "Ürünler", Package, records.length],
+                ["gorusmeler", "Görüşmeler", NotebookPen, meetings?.length ?? 0],
+              ] as const
+            ).map(([k, label, Icon, count]) => (
+              <Link
+                key={k}
+                href={`/raporlar?t=musteri&id=${card.id}${k === "gorusmeler" ? "&v=gorusmeler" : ""}`}
+                replace
+                className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-[14px] font-semibold ${view === k ? "bg-brand-50 text-brand-700" : "text-muted"}`}
+              >
+                <Icon size={16} /> {label}
+                <span
+                  className={`rounded-full px-1.5 text-[12px] tabular-nums ${view === k ? "bg-brand-600 text-white" : "bg-canvas text-muted"}`}
+                >
+                  {count}
+                </span>
+              </Link>
+            ))}
           </div>
 
-          <h2 className={sectionTitle}>Verilen fiyatlar</h2>
-          {records.length ? (
-            <div className="space-y-3">
-              {records.map((r) => {
-                const lines = [...(r.record_lines ?? [])].sort((a, b) => a.sort_order - b.sort_order);
-                return (
-                  <Link key={r.id} href={`/kayit/${r.id}`} className="card block p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <TypeBadge type={r.type} />
-                      <span className="text-[12px] text-muted">{formatDate(r.record_date)}</span>
-                    </div>
-                    {r.file_no && <p className="mt-1.5 text-[12px] text-muted">Dosya / ihale no: {r.file_no}</p>}
-                    <div className="mt-2 divide-y divide-line/70">
-                      {lines.map((l) => (
-                        <div key={l.id} className="py-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <b className="block text-[14px] font-semibold leading-snug">{lineName(l)}</b>
-                              <span className="text-[13px] text-muted">{priceText(l)}</span>
-                            </div>
-                            <OutcomeChip r={r} l={l} />
-                          </div>
-                          <Competitors l={l} bids={(r.tender_bids ?? []).filter((b) => b.line_id === l.id)} rates={rates} />
-                        </div>
-                      ))}
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="card p-4 text-[14px] text-muted">Bu hastane / müşteri için henüz kayıt yok.</p>
-          )}
+          {view === "urunler" ? (
+            <>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <Stat value={records.length} label="Teklif" />
+                <Stat value={allLines.filter((o) => o === "onay").length} label="Onaylanan kalem" cls="text-emerald-700" />
+                <Stat value={allLines.filter((o) => o === "red").length} label="Reddedilen kalem" cls="text-accent-600" />
+              </div>
 
-          <h2 className={sectionTitle}>Görüşmeler</h2>
-          {meetings?.length ? (
-            <div className="space-y-2">
+              <h2 className={sectionTitle}>Verilen fiyatlar</h2>
+              {records.length ? (
+                <div className="space-y-3">
+                  {records.map((r) => {
+                    const lines = [...(r.record_lines ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+                    return (
+                      <Link key={r.id} href={`/kayit/${r.id}`} className="card block p-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <TypeBadge type={r.type} />
+                          <span className="text-[12px] text-muted">{formatDate(r.record_date)}</span>
+                        </div>
+                        {r.file_no && <p className="mt-1.5 text-[12px] text-muted">Dosya / ihale no: {r.file_no}</p>}
+                        <div className="mt-2 divide-y divide-line/70">
+                          {lines.map((l) => (
+                            <div key={l.id} className="py-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <b className="block text-[14px] font-semibold leading-snug">{lineName(l)}</b>
+                                  <span className="text-[13px] text-muted">{priceText(l)}</span>
+                                </div>
+                                <OutcomeChip r={r} l={l} />
+                              </div>
+                              <Competitors l={l} bids={(r.tender_bids ?? []).filter((b) => b.line_id === l.id)} rates={rates} />
+                            </div>
+                          ))}
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="card p-4 text-[14px] text-muted">Bu hastane / müşteri için henüz kayıt yok.</p>
+              )}
+            </>
+          ) : meetings?.length ? (
+            <div className="mt-3 space-y-2">
               {meetings.map((m) => (
                 <div key={m.id} className="card p-4">
                   <p className="text-[12px] font-semibold text-ink/80">
@@ -248,7 +272,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
               ))}
             </div>
           ) : (
-            <p className="card flex items-center gap-2 p-4 text-[14px] text-muted">
+            <p className="card mt-3 flex items-center gap-2 p-4 text-[14px] text-muted">
               <NotebookPen size={16} /> Bu hastane için görüşme notu yok.
             </p>
           )}
