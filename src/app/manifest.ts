@@ -1,14 +1,14 @@
 import type { MetadataRoute } from "next";
-import { BASE_PATH } from "@/lib/config";
+import { APP_SCOPE, BASE_PATH } from "@/lib/config";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    id: BASE_PATH,
+    id: APP_SCOPE,
     name: "Erenos Medikal",
     short_name: "Erenos",
     description: "Erenos Medikal satış ve sevkiyat takibi",
-    start_url: BASE_PATH,
-    scope: BASE_PATH,
+    start_url: APP_SCOPE,
+    scope: APP_SCOPE,
     display: "standalone",
     orientation: "portrait",
     background_color: "#ffffff",

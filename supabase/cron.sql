@@ -3,7 +3,7 @@
 --
 -- Kurulum: Supabase > Database > Extensions'tan "pg_cron" ve "pg_net"i açın,
 -- aşağıdaki iki değeri kendi değerlerinizle değiştirip SQL Editor'de çalıştırın.
---   <SITE>        ör. https://www.erenosmedikal.com/mobiluygulama
+--   <SITE>        https://erenosmobile.bulenttayfur.com
 --   <CRON_SECRET> Vercel'deki CRON_SECRET ile aynı değer
 
 create extension if not exists pg_cron;

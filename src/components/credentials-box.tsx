@@ -37,7 +37,7 @@ export function CredentialsBox({ username, password }: { username: string; passw
   }, [state]);
 
   const copy = async () => {
-    const text = `Erenos Medikal Mobil\nAdres: ${window.location.origin}${BASE_PATH}\nKullanıcı adı: ${username}\nŞifre: ${password}`;
+    const text = `Erenos Medikal Mobil\nAdres: ${window.location.origin}${BASE_PATH || "/"}\nKullanıcı adı: ${username}\nŞifre: ${password}`;
     setState((await copyText(text)) ? "ok" : "fail");
   };
 

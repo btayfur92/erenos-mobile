@@ -1,4 +1,7 @@
-export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "/mobiluygulama";
+/** Alt yol (ör. "/mobiluygulama"); kökte (varsayılan) "". next.config.ts normalize edip aynı değişkene yazar. */
+export const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").trim().replace(/\/+$/, "");
+/** Manifest ve service worker kapsamı: kökte "/" olmalı (boş değer kurulumu bozar). */
+export const APP_SCOPE = BASE_PATH || "/";
 export const TIME_ZONE = "Europe/Istanbul";
 
 /** Dosya yollarını basePath ile birleştirir (sw.js, ikonlar gibi Next dışı istekler için). */

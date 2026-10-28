@@ -30,7 +30,7 @@ npm install
 cp .env.example .env.local      # değerleri doldurun
 npm run vapid                    # çıkan iki satırı .env.local'a ekleyin
 npm run create-admin -- bulent GucluBirSifre "Bülent Tayfur"
-npm run dev                      # http://localhost:3000/mobiluygulama
+npm run dev                      # http://localhost:3000
 ```
 
 `CRON_SECRET` için uzun rastgele bir metin yazın (ör. `openssl rand -hex 32`).
@@ -39,17 +39,11 @@ npm run dev                      # http://localhost:3000/mobiluygulama
 
 1. Kodu GitHub'a gönderin, Vercel'de **Add New > Project** ile depoyu içe aktarın.
 2. **Environment Variables** bölümüne `.env.local` içindeki tüm değişkenleri ekleyin.
-3. Yayınlayın. Adres: `https://<proje>.vercel.app/mobiluygulama`
+3. Yayınlayın. Geçici adres: `https://<proje>.vercel.app`
 
-**Kendi alan adınızın altında (`alanadiniz.com/mobiluygulama`):**
+**Kalıcı adres: `https://erenosmobile.bulenttayfur.com`** (alan adının kökünde, alt yol yok). Vercel'de projenin **Settings > Domains** bölümüne bu alt alan adını ekleyin; Vercel'in gösterdiği CNAME kaydını alan adı sağlayıcınızın DNS ayarlarına girin.
 
-- Siteniz de Vercel'deyse: ana sitenin `vercel.json` dosyasına yönlendirme ekleyin:
-  ```json
-  { "rewrites": [{ "source": "/mobiluygulama/:path*", "destination": "https://<proje>.vercel.app/mobiluygulama/:path*" }] }
-  ```
-- Başka bir sunucudaysa (Nginx/Apache/Cloudflare) aynı yolu `<proje>.vercel.app`'e ters vekil (reverse proxy) ile yönlendirin.
-
-Alt yolu değiştirmek isterseniz `NEXT_PUBLIC_BASE_PATH` değişkenini güncelleyin.
+Uygulama ileride bir alt yolda yayınlanacaksa (ör. `alanadiniz.com/mobiluygulama`) `NEXT_PUBLIC_BASE_PATH=/mobiluygulama` ekleyin; değişken yoksa ya da `/` ise uygulama kökte çalışır.
 
 ### 4. Hatırlatma bildirimleri (zamanlanmış iş)
 
@@ -61,7 +55,7 @@ Vercel'in ücretsiz planı günde tek cron çalıştırdığı için zamanlama S
 Elle denemek için:
 
 ```bash
-curl -H "Authorization: Bearer <CRON_SECRET>" "https://<site>/mobiluygulama/api/cron/reminders?force=1"
+curl -H "Authorization: Bearer <CRON_SECRET>" "https://erenosmobile.bulenttayfur.com/api/cron/reminders?force=1"
 ```
 
 ---
