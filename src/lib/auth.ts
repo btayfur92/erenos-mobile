@@ -2,7 +2,7 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { createClient } from "./supabase/server";
-import type { Profile } from "./types";
+import { canSell, type Profile } from "./types";
 
 /** Oturumdaki kullanıcı ve profili. Oturum yoksa login'e yönlendirir. */
 export const requireUser = cache(async () => {
@@ -18,6 +18,13 @@ export const requireUser = cache(async () => {
   }
   return { supabase, user, profile };
 });
+
+/** Satış kaydı açma/düzenleme ekranları: sevkiyat kullanıcısı ana sayfaya döner. */
+export async function requireSeller() {
+  const ctx = await requireUser();
+  if (!canSell(ctx.profile.role)) redirect("/");
+  return ctx;
+}
 
 export async function requireAdmin() {
   const ctx = await requireUser();

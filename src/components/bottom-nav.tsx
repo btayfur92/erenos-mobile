@@ -12,7 +12,8 @@ const tabs = [
   { href: "/ayarlar", label: "Ayarlar", icon: Settings },
 ] as const;
 
-export function BottomNav({ pendingShipments }: { pendingShipments: number }) {
+/** canAdd: yeni satış kaydı açabilir (sevkiyat kullanıcısında + yok). */
+export function BottomNav({ pendingShipments, canAdd }: { pendingShipments: number; canAdd: boolean }) {
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/" ? pathname === "/" || pathname.startsWith("/kayit") : pathname.startsWith(href));
 
@@ -22,13 +23,15 @@ export function BottomNav({ pendingShipments }: { pendingShipments: number }) {
         {tabs.map((tab, i) =>
           tab === null ? (
             <div key={i} className="flex justify-center">
-              <Link
-                href="/yeni"
-                aria-label="Yeni kayıt"
-                className="-mt-6 grid h-14 w-14 place-items-center rounded-2xl bg-brand-600 text-white shadow-float transition active:scale-95"
-              >
-                <Plus size={26} strokeWidth={2.4} />
-              </Link>
+              {canAdd && (
+                <Link
+                  href="/yeni"
+                  aria-label="Yeni kayıt"
+                  className="-mt-6 grid h-14 w-14 place-items-center rounded-2xl bg-brand-600 text-white shadow-float transition active:scale-95"
+                >
+                  <Plus size={26} strokeWidth={2.4} />
+                </Link>
+              )}
             </div>
           ) : (
             <Link

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizeUsername, usernameToEmail } from "@/lib/config";
+import { USER_ROLES, type UserRole } from "@/lib/types";
 
 export type UserActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -13,9 +14,10 @@ export async function createUser(input: {
   username: string;
   full_name: string;
   password: string;
-  is_admin: boolean;
+  role: UserRole;
 }): Promise<UserActionResult> {
   await requireAdmin();
+  if (!USER_ROLES.some((r) => r.value === input.role)) return { ok: false, error: "Kullanıcı tipini seçin." };
   const username = normalizeUsername(input.username);
   if (username.length < 3) return { ok: false, error: "Kullanıcı adı en az 3 karakter olmalı (harf, rakam, nokta)." };
   if (input.password.length < MIN_PASSWORD) return { ok: false, error: `Şifre en az ${MIN_PASSWORD} karakter olmalı.` };
@@ -28,7 +30,7 @@ export async function createUser(input: {
     email: usernameToEmail(username),
     password: input.password,
     email_confirm: true,
-    user_metadata: { username, full_name: input.full_name.trim(), is_admin: input.is_admin },
+    user_metadata: { username, full_name: input.full_name.trim(), role: input.role },
   });
   if (error) return { ok: false, error: error.message };
   revalidatePath("/ayarlar/kullanicilar");
@@ -45,12 +47,13 @@ export async function resetPassword(userId: string, password: string): Promise<U
 
 export async function updateUser(
   userId: string,
-  patch: { full_name?: string; username?: string; is_admin?: boolean; active?: boolean },
+  patch: { full_name?: string; username?: string; role?: UserRole; active?: boolean },
 ): Promise<UserActionResult> {
   const { user } = await requireAdmin();
-  if (userId === user.id && (patch.is_admin === false || patch.active === false)) {
-    return { ok: false, error: "Kendi yönetici yetkinizi kaldıramaz veya kendinizi pasife alamazsınız." };
+  if (userId === user.id && ((patch.role !== undefined && patch.role !== "admin") || patch.active === false)) {
+    return { ok: false, error: "Kendi admin yetkinizi kaldıramaz veya kendinizi pasife alamazsınız." };
   }
+  if (patch.role !== undefined && !USER_ROLES.some((r) => r.value === patch.role)) return { ok: false, error: "Kullanıcı tipini seçin." };
   const admin = createAdminClient();
 
   if (patch.username !== undefined) {

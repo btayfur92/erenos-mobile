@@ -20,6 +20,8 @@ import {
   type SampleItem,
   type Shipment,
   type TenderBid,
+  canDeliver,
+  canSell,
 } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge, statusLabel } from "@/components/status-badge";
@@ -42,7 +44,9 @@ function Section({ title, children, aside }: { title: string; children: React.Re
 
 export default async function RecordPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { supabase } = await requireUser();
+  const { supabase, profile } = await requireUser();
+  const seller = canSell(profile.role);
+  const deliverer = canDeliver(profile.role);
 
   const { data: record } = await supabase.from("records").select("*, record_lines(*)").eq("id", id).single<SalesRecord>();
   if (!record) notFound();
@@ -118,6 +122,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
         }
         action={
           // İhale ve DMO ihalesi sonuçlandıktan sonra da düzenlenebilir (ad, şehir, iletişim; kalem eklenip silinemez).
+          seller &&
           (!decided || tender) && (
             <Link
               href={`/kayit/${id}/duzenle`}
@@ -244,7 +249,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                 Doğrudan temin kaydına git <ArrowRight size={16} />
               </Link>
             )}
-            <RecordActions key={record.id} record={record} lines={lines} progress={progress} samples={samples ?? []} />
+            {seller && <RecordActions key={record.id} record={record} lines={lines} progress={progress} samples={samples ?? []} />}
           </div>
         </div>
 
@@ -379,7 +384,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
 
         {tender && (
           <Section title="Fiyat karşılaştırması">
-            <TenderComparison record={record} lines={lines} bids={bids ?? []} rates={rates} />
+            <TenderComparison record={record} lines={lines} bids={bids ?? []} rates={rates} readOnly={!seller} />
           </Section>
         )}
 
@@ -387,7 +392,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
           <Section title="Sevkiyatlar">
             <div className="space-y-2">
               {shipments.map((s) => (
-                <ShipmentCard key={s.id} shipment={s} names={names} />
+                <ShipmentCard key={s.id} shipment={s} names={names} canDeliver={deliverer} canCancel={seller} />
               ))}
             </div>
           </Section>
@@ -457,7 +462,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
             {record.created_by && names[record.created_by] ? `${names[record.created_by]} tarafından ` : ""}
             {formatDateTime(record.created_at)} tarihinde oluşturuldu
           </p>
-          <DeleteButton record={record} />
+          {seller && <DeleteButton record={record} />}
         </div>
       </main>
     </>

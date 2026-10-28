@@ -226,11 +226,14 @@ export function TenderComparison({
   lines,
   bids,
   rates,
+  readOnly = false,
 }: {
   record: SalesRecord;
   lines: RecordLine[];
   bids: TenderBid[];
   rates: Record<string, number> | null;
+  /** Sevkiyat kullanıcısı: yalnızca görür, rakip fiyatı ekleyip silemez. */
+  readOnly?: boolean;
 }) {
   const [sheet, setSheet] = useState<null | { company?: string }>(null);
   const [confirm, setConfirm] = useState<string>();
@@ -279,7 +282,7 @@ export function TenderComparison({
           );
         })}
 
-      {companies.length > 0 && (
+      {!readOnly && companies.length > 0 && (
         <div className="card divide-y divide-line/70">
           {companies.map((c) => (
             <div key={c} className="flex items-center gap-2 px-4 py-2.5">
@@ -327,10 +330,11 @@ export function TenderComparison({
       <ErrorText error={del.error} />
       {companies.length === 0 && (
         <p className="card p-4 text-[14px] text-muted">
-          İhaleden sonra açıklanan rakip fiyatlarını girin; her kalemde kaçıncı sırada olduğumuz burada görünür.
+          {readOnly ? "Rakip fiyatları henüz girilmedi. " : ""}İhaleden sonra açıklanan rakip fiyatlarını girin; her kalemde kaçıncı sırada
+          olduğumuz burada görünür.
         </p>
       )}
-      {record.status !== "reddedildi" && (
+      {!readOnly && record.status !== "reddedildi" && (
         <button onClick={() => setSheet({})} className="btn w-full border-2 border-dashed border-brand-200 bg-brand-50/50 text-brand-600">
           <Plus size={18} /> Rakip fiyatı ekle
         </button>

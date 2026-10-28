@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/page-header";
 import { RecordForm } from "@/components/record-form";
 import { todayIstanbul } from "@/lib/format";
-import { requireUser } from "@/lib/auth";
+import { requireSeller } from "@/lib/auth";
 import { fetchCards } from "@/lib/queries";
 
 export const metadata: Metadata = { title: "Yeni kayıt" };
 
 export default async function NewRecordPage({ searchParams }: { searchParams: Promise<{ tip?: string }> }) {
   const { tip } = await searchParams;
-  const { supabase } = await requireUser();
+  const { supabase } = await requireSeller();
   const { customers, products } = await fetchCards(supabase);
   return (
     <>

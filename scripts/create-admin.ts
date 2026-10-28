@@ -24,7 +24,7 @@ async function main() {
     email: usernameToEmail(username),
     password,
     email_confirm: true,
-    user_metadata: { username, full_name: fullName, is_admin: true },
+    user_metadata: { username, full_name: fullName, role: "admin" },
   });
   if (error) {
     console.error("Oluşturulamadı:", error.message);

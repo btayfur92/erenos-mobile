@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { Building2, ChevronRight, LogOut, Package, Users } from "lucide-react";
 import { requireUser } from "@/lib/auth";
+import { ROLE_LABEL } from "@/lib/types";
 import { logout } from "@/app/login/actions";
 import { PageHeader } from "@/components/page-header";
 import { PushToggle } from "@/components/push-toggle";
@@ -30,7 +31,7 @@ export default async function SettingsPage() {
             <p className="truncate text-[17px] font-semibold">{profile.full_name || profile.username}</p>
             <p className="text-[13px] text-muted">
               @{profile.username}
-              {profile.is_admin ? " · Yönetici" : ""}
+              {` · ${ROLE_LABEL[profile.role]}`}
             </p>
           </div>
         </div>

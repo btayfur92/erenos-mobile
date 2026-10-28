@@ -11,10 +11,16 @@ export function ShipmentCard({
   shipment,
   showRecord,
   names,
+  canDeliver = true,
+  canCancel = true,
 }: {
   shipment: Shipment;
   showRecord?: boolean;
   names?: Record<string, string>;
+  /** Teslim edildi işaretleyebilir (satış kullanıcısında yok). */
+  canDeliver?: boolean;
+  /** Sevkiyatı iptal edebilir (sevkiyat kullanıcısında yok). */
+  canCancel?: boolean;
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
@@ -55,7 +61,7 @@ export function ShipmentCard({
             {shipment.created_by && names?.[shipment.created_by] ? ` · ${names[shipment.created_by]}` : ""}
           </p>
         </div>
-        {!delivered && !confirmCancel && (
+        {canCancel && !delivered && !confirmCancel && (
           <button
             onClick={() => setConfirmCancel(true)}
             className="-mr-1 -mt-1 grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-canvas"
@@ -93,9 +99,11 @@ export function ShipmentCard({
           </button>
         </div>
       ) : (
-        <button className="btn-primary mt-3 w-full py-2.5" disabled={pending} onClick={() => act(() => markDelivered(shipment.id))}>
-          {pending ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={17} />} Teslim edildi
-        </button>
+        canDeliver && (
+          <button className="btn-primary mt-3 w-full py-2.5" disabled={pending} onClick={() => act(() => markDelivered(shipment.id))}>
+            {pending ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={17} />} Teslim edildi
+          </button>
+        )
       )}
       {error && <p className="mt-2 text-sm font-medium text-accent-700">{error}</p>}
     </div>

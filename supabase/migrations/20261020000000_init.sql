@@ -44,11 +44,16 @@ create type public.manual_status as enum ('bekliyor', 'tamamlandi');
 -- Profiller (auth.users ile 1-1)
 -- ---------------------------------------------------------------------------
 
+-- Kullanıcı tipleri: admin her şey + kullanıcı yönetimi; yönetici kullanıcı yönetimi hariç her şey;
+-- satış teslim edildi / teslim alındı işaretleyemez; sevkiyat yalnızca teslim işaretler, elle sevkiyat ve görüşme ekler (kayıt açamaz, değiştiremez).
+create type public.user_role as enum ('admin', 'yonetici', 'satis', 'sevkiyat');
+
 create table public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   username text not null unique,
   full_name text not null default '',
-  is_admin boolean not null default false,
+  role public.user_role not null default 'satis',
+  is_admin boolean generated always as (role = 'admin') stored,
   active boolean not null default true,
   extended_hours boolean not null default false,  -- anımsatıcıları 08:00–22:00 arasında (her gün) al
   created_at timestamptz not null default now()
@@ -61,12 +66,16 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, username, full_name, is_admin)
+  insert into public.profiles (id, username, full_name, role)
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'username', split_part(new.email, '@', 1)),
     coalesce(new.raw_user_meta_data ->> 'full_name', ''),
-    coalesce((new.raw_user_meta_data ->> 'is_admin')::boolean, false)
+    coalesce(
+      (new.raw_user_meta_data ->> 'role')::public.user_role,
+      case when coalesce((new.raw_user_meta_data ->> 'is_admin')::boolean, false) then 'admin'::public.user_role end,
+      'satis'
+    )
   );
   return new;
 end;
@@ -94,6 +103,28 @@ security definer
 set search_path = public
 as $$
   select coalesce((select active from public.profiles where id = auth.uid()), false);
+$$;
+
+-- Satış kayıtlarını (DT, ihale, YM, GS) açıp değiştirebilir, sevkiyata aktarabilir: admin, yönetici, satış.
+create or replace function public.can_sell()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce((select active and role in ('admin', 'yonetici', 'satis') from public.profiles where id = auth.uid()), false);
+$$;
+
+-- Teslim edildi / teslim alındı işaretleyebilir: admin, yönetici, sevkiyat.
+create or replace function public.can_deliver()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce((select active and role in ('admin', 'yonetici', 'sevkiyat') from public.profiles where id = auth.uid()), false);
 $$;
 
 -- ---------------------------------------------------------------------------
@@ -403,6 +434,7 @@ create trigger record_lines_link_product before insert or update of product_name
 create or replace function public.sync_card_name()
 returns trigger
 language plpgsql
+security definer
 set search_path = public
 as $$
 begin
@@ -968,6 +1000,9 @@ declare
   v_done numeric;
   v_qty numeric;
 begin
+  if not public.can_deliver() then
+    raise exception 'Teslim işaretleme yetkiniz yok.';
+  end if;
   select quantity into v_total from manual_shipments where id = p_id and status = 'bekliyor' for update;
   if not found then
     raise exception 'Bu sevkiyat tamamlanmış ya da silinmiş.';
@@ -1074,30 +1109,39 @@ create policy "profiles_read" on public.profiles
 create policy "profiles_admin_write" on public.profiles
   for update to authenticated using (public.is_admin()) with check (public.is_admin());
 
-create policy "records_all" on public.records
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 create policy "customers_all" on public.customers
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 create policy "products_all" on public.products
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
-create policy "record_lines_all" on public.record_lines
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
-create policy "call_logs_all" on public.call_logs
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
-create policy "sample_items_all" on public.sample_items
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
-create policy "tender_bids_all" on public.tender_bids
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
-create policy "contract_adjustments_all" on public.contract_adjustments
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
-create policy "shipments_all" on public.shipments
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
-create policy "shipment_items_all" on public.shipment_items
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
-create policy "manual_shipment_deliveries_all" on public.manual_shipment_deliveries
-  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 create policy "manual_shipments_all" on public.manual_shipments
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+
+-- Satış kayıtları ve sevkiyata aktarma: herkes görür, yalnızca satış yapabilenler (admin, yönetici, satış) yazar.
+create policy "records_read" on public.records for select to authenticated using (public.is_active_user());
+create policy "records_write" on public.records for all to authenticated using (public.can_sell()) with check (public.can_sell());
+create policy "record_lines_read" on public.record_lines for select to authenticated using (public.is_active_user());
+create policy "record_lines_write" on public.record_lines for all to authenticated using (public.can_sell()) with check (public.can_sell());
+create policy "call_logs_read" on public.call_logs for select to authenticated using (public.is_active_user());
+create policy "call_logs_write" on public.call_logs for all to authenticated using (public.can_sell()) with check (public.can_sell());
+create policy "sample_items_read" on public.sample_items for select to authenticated using (public.is_active_user());
+create policy "sample_items_write" on public.sample_items for all to authenticated using (public.can_sell()) with check (public.can_sell());
+create policy "tender_bids_read" on public.tender_bids for select to authenticated using (public.is_active_user());
+create policy "tender_bids_write" on public.tender_bids for all to authenticated using (public.can_sell()) with check (public.can_sell());
+create policy "contract_adjustments_read" on public.contract_adjustments for select to authenticated using (public.is_active_user());
+create policy "contract_adjustments_write" on public.contract_adjustments
+  for all to authenticated using (public.can_sell()) with check (public.can_sell());
+create policy "shipment_items_read" on public.shipment_items for select to authenticated using (public.is_active_user());
+create policy "shipment_items_write" on public.shipment_items for all to authenticated using (public.can_sell()) with check (public.can_sell());
+-- Sevkiyat: aktarma ve iptal satışta; teslim edildi (status güncellemesi) teslim yetkisinde.
+create policy "shipments_read" on public.shipments for select to authenticated using (public.is_active_user());
+create policy "shipments_insert" on public.shipments for insert to authenticated with check (public.can_sell());
+create policy "shipments_delete" on public.shipments for delete to authenticated using (public.can_sell());
+create policy "shipments_deliver" on public.shipments for update to authenticated using (public.can_deliver()) with check (public.can_deliver());
+-- Elle eklenen sevkiyatı herkes ekler/düzeltir; teslim kaydı yalnızca teslim yetkisinde.
+create policy "manual_shipment_deliveries_read" on public.manual_shipment_deliveries
+  for select to authenticated using (public.is_active_user());
+create policy "manual_shipment_deliveries_write" on public.manual_shipment_deliveries
+  for all to authenticated using (public.can_deliver()) with check (public.can_deliver());
 create policy "meetings_all" on public.meetings
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 

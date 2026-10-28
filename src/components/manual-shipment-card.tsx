@@ -10,7 +10,16 @@ import { formatDate, formatDateTime, formatQty, todayIstanbul } from "@/lib/form
 import type { ManualShipment } from "@/lib/types";
 
 /** Elle eklenen sevkiyat kartı: gelecek (tedarikçiden bize) ya da doğrudan temine bağlı olmayan gidecek. */
-export function ManualShipmentCard({ item, names }: { item: ManualShipment; names?: Record<string, string> }) {
+/** canDeliver: teslim edildi / teslim alındı işaretleyebilir (satış kullanıcısında yok). */
+export function ManualShipmentCard({
+  item,
+  names,
+  canDeliver = true,
+}: {
+  item: ManualShipment;
+  names?: Record<string, string>;
+  canDeliver?: boolean;
+}) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -125,9 +134,11 @@ export function ManualShipmentCard({ item, names }: { item: ManualShipment; name
           </button>
         </div>
       ) : (
-        <button className="btn-primary mt-3 w-full py-2.5" disabled={pending} onClick={() => setDelivering(true)}>
-          {pending ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={17} />} {doneLabel}
-        </button>
+        canDeliver && (
+          <button className="btn-primary mt-3 w-full py-2.5" disabled={pending} onClick={() => setDelivering(true)}>
+            {pending ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={17} />} {doneLabel}
+          </button>
+        )
       )}
       {error && <p className="mt-2 text-sm font-medium text-accent-700">{error}</p>}
       {!done && <ManualShipmentSheet open={editing} onClose={() => setEditing(false)} item={item} />}

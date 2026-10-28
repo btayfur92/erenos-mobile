@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { sendToAll, type PushPayload } from "@/lib/push";
 import {
+  canDeliver,
+  canSell,
   isTenderType,
   RECORD_TYPE_LABEL,
   REMINDER_INTERVALS,
@@ -33,6 +35,14 @@ function notify(payload: PushPayload, actorId: string) {
       console.error("[push] bildirim gönderilemedi", err);
     }
   });
+}
+
+const NO_PERMISSION = "Bu işlem için yetkiniz yok.";
+
+/** Kullanıcı tipine göre yetki: "sell" satış kayıtları ve sevkiyata aktarma, "deliver" teslim işaretleme. */
+async function requireRole(need: "sell" | "deliver") {
+  const ctx = await requireUser();
+  return (need === "sell" ? canSell : canDeliver)(ctx.profile.role) ? ctx : null;
 }
 
 function refresh() {
@@ -65,7 +75,9 @@ export interface RecordInput {
 }
 
 export async function saveRecord(input: RecordInput): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
   if (!input.hospital.trim()) return { ok: false, error: input.type === "genel_siparis" ? "Müşteri adı gerekli." : "Hastane adı gerekli." };
   const lines = input.lines.filter((l) => l.product_name.trim());
   if (!lines.length) return { ok: false, error: "En az bir ürün kalemi girin." };
@@ -108,7 +120,9 @@ export async function saveRecord(input: RecordInput): Promise<ActionResult> {
 }
 
 export async function logCall(recordId: string, note: string, keepReminding: boolean): Promise<ActionResult> {
-  const { supabase } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase } = ctx;
   if (!note.trim()) return { ok: false, error: "Görüşme notu gerekli." };
   const { error } = await supabase.rpc("log_call", {
     p_record_id: recordId,
@@ -128,7 +142,9 @@ export interface SampleInput {
 
 /** Hastanenin istediği numune (sonuçtan önce, isteğe bağlı adım). Gönderilene kadar düzeltilebilir. */
 export async function requestSample(recordId: string, note: string, items: SampleInput[]): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
   if (!items.length) return { ok: false, error: "İstenen en az bir numune seçin." };
   if (items.some((i) => !(i.quantity > 0))) return { ok: false, error: "Numune miktarı sıfırdan büyük olmalı." };
   const { data: before } = await supabase.from("records").select("status, hospital, file_no").eq("id", recordId).single();
@@ -147,7 +163,9 @@ export async function requestSample(recordId: string, note: string, items: Sampl
 }
 
 export async function markSampleSent(recordId: string): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
   const { error } = await supabase.rpc("mark_sample_sent", { p_record_id: recordId });
   if (error) return fail(error);
   const { data: rec } = await supabase.from("records").select("hospital, file_no").eq("id", recordId).single();
@@ -171,7 +189,9 @@ export async function setResult(
   contractEnd: string | null = null,
   contractStart: string | null = null,
 ): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
   const { data: before } = await supabase.from("records").select("status, type").eq("id", recordId).single();
   const wasDecided = before?.status === "onaylandi" || before?.status === "reddedildi";
   const tender = !!before && isTenderType(before.type);
@@ -222,7 +242,9 @@ async function tenderInfo(supabase: Awaited<ReturnType<typeof requireUser>>["sup
 
 /** İhale: teminat yatırıldı (paid=false geri alır). */
 export async function setGuarantee(recordId: string, paid: boolean): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
   const { error } = await supabase.rpc("set_guarantee", { p_record_id: recordId, p_paid: paid });
   if (error) return fail(error);
   if (paid) notify({ title: "Teminat yatırıldı", body: await tenderInfo(supabase, recordId), url: `/kayit/${recordId}` }, user.id);
@@ -235,7 +257,9 @@ export async function setOurPrices(
   recordId: string,
   lines: { line_id: string; unit_price: number; currency: string }[],
 ): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
   if (lines.some((l) => !(l.unit_price >= 0))) return { ok: false, error: "Her kalem için birim fiyat girin." };
   const { data: before } = await supabase.from("records").select("prices_entered_at, type").eq("id", recordId).single();
   const { error } = await supabase.rpc("set_our_prices", { p_record_id: recordId, p_lines: lines });
@@ -259,7 +283,9 @@ export async function saveCompetitor(
   oldCompany: string | null,
   prices: { line_id: string; unit_price: number | null; currency: string }[],
 ): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
   if (!company.trim()) return { ok: false, error: "Firma adı gerekli." };
   if (!prices.some((p) => p.unit_price !== null)) return { ok: false, error: "En az bir kalem için fiyat girin." };
   const { error } = await supabase.rpc("save_competitor", {
@@ -280,7 +306,9 @@ export async function saveCompetitor(
 }
 
 export async function deleteCompetitor(recordId: string, company: string): Promise<ActionResult> {
-  const { supabase } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase } = ctx;
   const { error } = await supabase.from("tender_bids").delete().eq("record_id", recordId).eq("company", company);
   if (error) return fail(error);
   refresh();
@@ -289,7 +317,9 @@ export async function deleteCompetitor(recordId: string, company: string): Promi
 
 /** Sözleşmeli ihalede iş artışı / eksiltmesi (sözleşme miktarının en fazla %20'si). */
 export async function adjustContract(recordId: string, lineId: string, quantity: number, note: string): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
   if (!(quantity > 0)) return { ok: false, error: "Miktar sıfırdan büyük olmalı." };
   const { data: line } = await supabase.from("record_lines").select("product_name, unit, approved_qty").eq("id", lineId).single();
   const { error } = await supabase.rpc("adjust_contract", { p_line_id: lineId, p_qty: quantity, p_note: note });
@@ -314,7 +344,9 @@ export async function createShipment(
   items: { line_id: string; quantity: number }[],
   plannedDate: string,
 ): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(plannedDate)) return { ok: false, error: "Sevk tarihini seçin." };
   const { data, error } = await supabase.rpc("create_shipment", {
     p_record_id: recordId,
@@ -345,7 +377,9 @@ export async function createShipment(
 }
 
 export async function markDelivered(shipmentId: string): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
+  const ctx = await requireRole("deliver");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
   const { data, error } = await supabase
     .from("shipments")
     .update({ status: "teslim_edildi", delivered_at: new Date().toISOString(), delivered_by: user.id })
@@ -361,7 +395,9 @@ export async function markDelivered(shipmentId: string): Promise<ActionResult> {
 }
 
 export async function cancelShipment(shipmentId: string): Promise<ActionResult> {
-  const { supabase } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase } = ctx;
   const { error } = await supabase.from("shipments").delete().eq("id", shipmentId).eq("status", "sevk_bekliyor");
   if (error) return fail(error);
   refresh();
@@ -378,7 +414,9 @@ export async function setYmResult(
   note: string,
   reopen = false,
 ): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
   const { data: before } = await supabase.from("records").select("status").eq("id", recordId).single();
   const { error } = await supabase.rpc("set_ym_result", { p_record_id: recordId, p_lines: lines, p_note: note, p_reopen: reopen });
   if (error) return fail(error);
@@ -406,7 +444,9 @@ export async function setYmResult(
 }
 
 export async function deleteRecord(recordId: string): Promise<ActionResult> {
-  const { supabase } = await requireUser();
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase } = ctx;
   const { error } = await supabase.from("records").delete().eq("id", recordId);
   if (error) return fail(error);
   refresh();
@@ -484,7 +524,9 @@ export async function updateManualShipment(id: string, input: ManualShipmentInpu
  * (quantity); kalan sıfıra inince sevkiyat tamamlanır. quantity null ise kalanın tamamı teslim sayılır.
  */
 export async function completeManualShipment(id: string, quantity: number | null = null): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
+  const ctx = await requireRole("deliver");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
   if (quantity !== null && !(quantity > 0)) return { ok: false, error: "Teslim miktarı sıfırdan büyük olmalı." };
   const { data: done, error } = await supabase.rpc("deliver_manual_shipment", { p_id: id, p_quantity: quantity });
   if (error) return fail(error);

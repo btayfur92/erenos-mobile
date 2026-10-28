@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { ShipmentCard } from "@/components/shipment-card";
 import { ManualShipmentCard } from "@/components/manual-shipment-card";
 import { AddShipment } from "@/components/add-shipment";
-import type { ManualShipment, Profile, Shipment } from "@/lib/types";
+import { canDeliver, canSell, type ManualShipment, type Profile, type Shipment } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Sevkiyat" };
 
@@ -16,7 +16,9 @@ export const metadata: Metadata = { title: "Sevkiyat" };
 export default async function ShipmentsPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
   const { d } = await searchParams;
   const done = d === "tamam" || d === "teslim";
-  const { supabase } = await requireUser();
+  const { supabase, profile } = await requireUser();
+  const deliverer = canDeliver(profile.role);
+  const seller = canSell(profile.role);
 
   const [{ data: outgoing }, { data: manual }, { data: profiles }] = await Promise.all([
     done
@@ -57,11 +59,11 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
   const list = [
     ...(outgoing ?? []).map((s) => ({
       at: (done ? s.delivered_at : s.planned_date) ?? "",
-      node: <ShipmentCard key={`s-${s.id}`} shipment={s} names={names} showRecord />,
+      node: <ShipmentCard key={`s-${s.id}`} shipment={s} names={names} showRecord canDeliver={deliverer} canCancel={seller} />,
     })),
     ...(manual ?? []).map((m) => ({
       at: (done ? m.completed_at : m.due_date) ?? "",
-      node: <ManualShipmentCard key={`m-${m.id}`} item={m} names={names} />,
+      node: <ManualShipmentCard key={`m-${m.id}`} item={m} names={names} canDeliver={deliverer} />,
     })),
   ].sort((x, y) => (done ? y.at.localeCompare(x.at) : x.at.localeCompare(y.at)));
 

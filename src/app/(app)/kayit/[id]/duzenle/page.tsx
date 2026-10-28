@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireUser } from "@/lib/auth";
+import { requireSeller } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { RecordForm } from "@/components/record-form";
 import type { SalesRecord } from "@/lib/types";
@@ -7,7 +7,7 @@ import { fetchCards } from "@/lib/queries";
 
 export default async function EditRecordPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { supabase } = await requireUser();
+  const { supabase } = await requireSeller();
   const [{ data: r }, { customers, products }] = await Promise.all([
     supabase.from("records").select("*, record_lines(*)").eq("id", id).single<SalesRecord>(),
     fetchCards(supabase),

@@ -211,12 +211,30 @@ export interface Profile {
   id: string;
   username: string;
   full_name: string;
-  is_admin: boolean;
+  role: UserRole;
+  is_admin: boolean; // role === "admin"
   active: boolean;
   /** Anımsatıcıları her gün 08:00–22:00 arasında al (kapalıyken hafta içi mesai saatleri). */
   extended_hours: boolean;
   created_at: string;
 }
+
+/**
+ * Kullanıcı tipleri: admin her şey + kullanıcı/şifre yönetimi; yönetici kullanıcı yönetimi hariç her şey;
+ * satış teslim edildi / teslim alındı işaretleyemez; sevkiyat yalnızca teslim işaretler, elle sevkiyat ve görüşme ekler.
+ */
+export type UserRole = "admin" | "yonetici" | "satis" | "sevkiyat";
+export const USER_ROLES: { value: UserRole; label: string; hint: string }[] = [
+  { value: "admin", label: "Admin", hint: "Her şey; kullanıcı açar, şifre değiştirir" },
+  { value: "yonetici", label: "Yönetici", hint: "Kullanıcı yönetimi hariç her şey" },
+  { value: "satis", label: "Satış", hint: "Teslim edildi işaretleyemez" },
+  { value: "sevkiyat", label: "Sevkiyat", hint: "Teslim işaretler, sevkiyat ve görüşme ekler; kayıt açamaz" },
+];
+export const ROLE_LABEL = Object.fromEntries(USER_ROLES.map((r) => [r.value, r.label])) as Record<UserRole, string>;
+/** Satış kayıtlarını açıp değiştirebilir, sevkiyata aktarabilir. */
+export const canSell = (role: UserRole) => role !== "sevkiyat";
+/** Teslim edildi / teslim alındı işaretleyebilir. */
+export const canDeliver = (role: UserRole) => role !== "satis";
 
 export const RECORD_TYPE_LABEL: Record<RecordType, string> = {
   yaklasik_maliyet: "Yaklaşık Maliyet",

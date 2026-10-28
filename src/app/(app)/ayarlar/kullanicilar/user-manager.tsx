@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { KeyRound, Loader2, Plus, ShieldCheck, UserCheck, UserX } from "lucide-react";
+import { KeyRound, Loader2, Plus, UserCheck, UserX } from "lucide-react";
 import { Sheet } from "@/components/sheet";
 import { CredentialsBox } from "@/components/credentials-box";
-import type { Profile } from "@/lib/types";
+import { ROLE_LABEL, USER_ROLES, type Profile, type UserRole } from "@/lib/types";
 import { normalizeUsername } from "@/lib/config";
 import { createUser, resetPassword, updateUser, type UserActionResult } from "./actions";
 
@@ -40,11 +40,11 @@ export function UserManager({ users, currentUserId }: { users: Profile[]; curren
                 </b>
                 <span className="text-[13px] text-muted">@{u.username}</span>
               </span>
-              {u.is_admin && (
-                <span className="flex items-center gap-1 rounded-full bg-brand-50 px-2 py-1 text-[11px] font-semibold text-brand-700">
-                  <ShieldCheck size={13} /> Yönetici
-                </span>
-              )}
+              <span
+                className={`rounded-full px-2 py-1 text-[11px] font-semibold ${u.is_admin ? "bg-brand-600 text-white" : "bg-brand-50 text-brand-700"}`}
+              >
+                {ROLE_LABEL[u.role]}
+              </span>
               {!u.active && <span className="rounded-full bg-canvas px-2 py-1 text-[11px] font-semibold text-muted">Pasif</span>}
             </button>
           </li>
@@ -80,15 +80,37 @@ function Result({ r }: { r?: UserActionResult }) {
   );
 }
 
+/** Kullanıcı tipi seçimi: her tipin altında ne yapabildiği yazar. */
+function RolePicker({ value, onChange, disabled }: { value: UserRole; onChange: (r: UserRole) => void; disabled?: boolean }) {
+  return (
+    <div role="radiogroup" aria-label="Kullanıcı tipi" className="grid grid-cols-2 gap-2">
+      {USER_ROLES.map((r) => (
+        <button
+          key={r.value}
+          type="button"
+          role="radio"
+          aria-checked={value === r.value}
+          disabled={disabled}
+          onClick={() => onChange(r.value)}
+          className={`rounded-xl p-3 text-left ring-1 transition ${value === r.value ? "bg-brand-50 ring-2 ring-brand-600" : "bg-white ring-line"}`}
+        >
+          <b className={`block text-[14px] font-semibold ${value === r.value ? "text-brand-700" : ""}`}>{r.label}</b>
+          <span className="block text-[12px] leading-snug text-muted">{r.hint}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function AddUserSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { pending, result, run, setResult } = useRun();
-  const [form, setForm] = useState({ username: "", full_name: "", password: randomPassword(), is_admin: false });
+  const [form, setForm] = useState({ username: "", full_name: "", password: randomPassword(), role: "satis" as UserRole });
   const [created, setCreated] = useState<{ username: string; password: string } | null>(null);
 
   const close = () => {
     setCreated(null);
     setResult(undefined);
-    setForm({ username: "", full_name: "", password: randomPassword(), is_admin: false });
+    setForm({ username: "", full_name: "", password: randomPassword(), role: "satis" });
     onClose();
   };
 
@@ -143,18 +165,10 @@ function AddUserSheet({ open, onClose }: { open: boolean; onClose: () => void })
               </button>
             </div>
           </div>
-          <label className="flex items-center gap-3 rounded-xl bg-canvas p-3.5 text-sm">
-            <input
-              type="checkbox"
-              checked={form.is_admin}
-              onChange={(e) => setForm({ ...form, is_admin: e.target.checked })}
-              className="h-5 w-5 accent-brand-600"
-            />
-            <span>
-              <b className="block font-semibold">Yönetici</b>
-              <span className="text-muted">Kullanıcı ekleyip yönetebilir.</span>
-            </span>
-          </label>
+          <div>
+            <span className="field-label">Kullanıcı tipi</span>
+            <RolePicker value={form.role} onChange={(role) => setForm({ ...form, role })} />
+          </div>
           <Result r={result} />
           <button className="btn-primary w-full" disabled={pending}>
             {pending && <Loader2 size={18} className="animate-spin" />} Oluştur
@@ -171,7 +185,8 @@ function EditUserSheet({ user, self, onClose }: { user: Profile; self: boolean; 
   const [newCred, setNewCred] = useState<{ username: string; password: string } | null>(null);
   const [fullName, setFullName] = useState(user.full_name);
   const [username, setUsername] = useState(user.username);
-  const changed = fullName.trim() !== user.full_name || normalizeUsername(username) !== user.username;
+  const [role, setRole] = useState<UserRole>(user.role);
+  const changed = fullName.trim() !== user.full_name || normalizeUsername(username) !== user.username || role !== user.role;
 
   return (
     <Sheet open onClose={onClose} title={user.full_name || user.username}>
@@ -191,10 +206,15 @@ function EditUserSheet({ user, self, onClose }: { user: Profile; self: boolean; 
               autoCorrect="off"
             />
           </div>
+          <div>
+            <span className="field-label">Kullanıcı tipi</span>
+            <RolePicker value={role} onChange={setRole} disabled={self} />
+            {self && <p className="mt-1.5 text-[12px] text-muted">Kendi kullanıcı tipinizi değiştiremezsiniz.</p>}
+          </div>
           <button
             className="btn-primary w-full"
             disabled={pending || !changed || !fullName.trim()}
-            onClick={() => run(() => updateUser(user.id, { full_name: fullName.trim(), username }))}
+            onClick={() => run(() => updateUser(user.id, { full_name: fullName.trim(), username, ...(self ? {} : { role }) }))}
           >
             Bilgileri kaydet
           </button>
@@ -236,24 +256,14 @@ function EditUserSheet({ user, self, onClose }: { user: Profile; self: boolean; 
           )}
         </div>
         {!self && (
-          <div className="grid grid-cols-2 gap-2">
+          <div>
             <button
-              className="btn-secondary"
-              disabled={pending}
-              onClick={() => run(() => updateUser(user.id, { is_admin: !user.is_admin }), onClose)}
-            >
-              <ShieldCheck size={17} /> {user.is_admin ? "Yöneticiliği kaldır" : "Yönetici yap"}
-            </button>
-            <button
-              className={user.active ? "btn bg-accent-50 text-accent-700" : "btn bg-emerald-50 text-emerald-700"}
+              className={`w-full ${user.active ? "btn bg-accent-50 text-accent-700" : "btn bg-emerald-50 text-emerald-700"}`}
               disabled={pending}
               onClick={() => run(() => updateUser(user.id, { active: !user.active }), onClose)}
             >
               {user.active ? <UserX size={17} /> : <UserCheck size={17} />} {user.active ? "Pasife al" : "Aktif et"}
             </button>
-            <p className="col-span-2 text-[12px] text-muted">
-              Yönetici yapılan kullanıcı sizinle aynı yetkilere sahip olur: kullanıcı ekleyebilir, düzenleyebilir ve yönetici atayabilir.
-            </p>
           </div>
         )}
         <Result r={result} />
