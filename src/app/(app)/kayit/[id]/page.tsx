@@ -234,7 +234,9 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                     {record.sample_sent_by && names[record.sample_sent_by] ? ` · ${names[record.sample_sent_by]}` : ""}
                   </p>
                 ) : (
-                  !decided && <p className="text-muted">Henüz gönderilmedi.</p>
+                  !decided && (
+                    <p className="text-muted">Henüz gönderilmedi. Gönderilene kadar mesai içinde 2 saatte bir hatırlatma gider.</p>
+                  )
                 )}
               </div>
             </div>

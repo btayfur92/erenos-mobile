@@ -415,7 +415,7 @@ end;
 $$;
 
 -- Numune talebi (ilk giriş ya da numune gönderilmeden önce düzeltme).
--- p_items: [{product_name, quantity, unit}]. Talep girilince arama hatırlatmaları durur.
+-- p_items: [{product_name, quantity, unit}]. Talep girilince arama hatırlatması yerine numune hatırlatması başlar.
 create or replace function public.request_sample(p_record_id uuid, p_note text, p_items jsonb)
 returns void
 language plpgsql
@@ -449,6 +449,8 @@ begin
 
   update records
   set sample_requested_at = case when status = 'numune_istendi' then sample_requested_at else now() end,
+      -- numune gönderilene kadar 2 saatte bir hatırlatma; ilki talepten 2 saat sonra
+      last_reminded_at = case when status = 'numune_istendi' then last_reminded_at else now() end,
       sample_note = nullif(trim(p_note), ''),
       status = 'numune_istendi'
   where id = p_record_id;

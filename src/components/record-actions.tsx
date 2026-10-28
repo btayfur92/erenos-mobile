@@ -252,7 +252,8 @@ function SampleSheet({
     <Sheet open={open} onClose={onClose} title={editing ? "Numune talebini düzenle" : "Numune istendi"}>
       <div className="space-y-4">
         <p className="text-sm text-muted">
-          Hastanenin numune istediği ürünleri seçip miktarını girin. Kayıt sonuç girilene kadar Gündemdekiler&apos;de kalır.
+          Hastanenin numune istediği ürünleri seçip miktarını girin. Numune gönderildi denene kadar mesai içinde 2 saatte bir hatırlatma
+          gider.
         </p>
         <div className="space-y-2">
           {lines.map((l) => {
