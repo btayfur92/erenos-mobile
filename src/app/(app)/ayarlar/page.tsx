@@ -40,6 +40,9 @@ export default async function SettingsPage() {
             [
               ["/ayarlar/hastaneler", Building2, "Hastaneler / Müşteriler", "Hastane ve müşteri kartları"],
               ["/ayarlar/urunler", Package, "Ürünler", "Ürün kartları"],
+              ...(profile.is_admin
+                ? ([["/ayarlar/kullanicilar", Users, "Kullanıcılar", "Kullanıcı ekle, şifre belirle, pasife al"]] as const)
+                : []),
             ] as const
           ).map(([href, Icon, title, text]) => (
             <Link key={href} href={href} className="flex items-center gap-3 p-4">
@@ -62,19 +65,6 @@ export default async function SettingsPage() {
         <div className="card">
           <ExtendedHoursToggle initial={profile.extended_hours} />
         </div>
-
-        {profile.is_admin && (
-          <Link href="/ayarlar/kullanicilar" className="card flex items-center gap-3 p-4">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600">
-              <Users size={20} />
-            </span>
-            <span className="flex-1">
-              <b className="block text-[15px] font-semibold">Kullanıcılar</b>
-              <span className="text-[13px] text-muted">Kullanıcı ekle, şifre belirle, pasife al</span>
-            </span>
-            <ChevronRight size={18} className="text-muted/60" />
-          </Link>
-        )}
 
         <form action={logout}>
           <button className="btn w-full bg-white text-accent-600 ring-1 ring-line">
