@@ -1,7 +1,9 @@
-import { STATUS_LABEL, type RecordStatus, type RecordType, type SalesRecord } from "@/lib/types";
+import { STATUS_LABEL, tenderCountdown, type RecordStatus, type RecordType, type SalesRecord } from "@/lib/types";
+import { todayIstanbul } from "@/lib/format";
 
 const STYLE: Record<RecordStatus, string> = {
   acik: "bg-brand-50 text-brand-700",
+  ihale_bekliyor: "bg-teal-50 text-teal-700",
   arama_bekliyor: "bg-accent-50 text-accent-700",
   arandi: "bg-amber-50 text-amber-700",
   numune_istendi: "bg-violet-50 text-violet-700",
@@ -27,6 +29,7 @@ export function StatusBadge({ status, label }: { status: RecordStatus; label?: s
 const TYPE_BADGE: Partial<Record<RecordType, [string, string]>> = {
   dogrudan_temin: ["DOĞRUDAN TEMİN", "bg-brand-600 text-white"],
   genel_siparis: ["GENEL SATIŞ", "bg-ink text-white"],
+  ihale_siparisi: ["İHALE", "bg-teal-600 text-white"],
   yaklasik_maliyet: ["YAKLAŞIK MALİYET", "bg-brand-100 text-brand-700"],
 };
 
@@ -35,7 +38,10 @@ export function TypeBadge({ type }: { type: RecordType }) {
   return <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-bold tracking-wide ${cls}`}>{label}</span>;
 }
 
-/** Genel satış girildiğinde onay bekler; "Açık" yerine bunu göster. */
-export function statusLabel(record: Pick<SalesRecord, "type" | "status">) {
-  return record.type === "genel_siparis" && record.status === "acik" ? "Onay bekliyor" : undefined;
+/** Genel satış onay bekler; ihale öncesi kalan gün, sözleşmeli ihale "Sözleşmeli" yazar. */
+export function statusLabel(record: Pick<SalesRecord, "type" | "status" | "record_date">) {
+  if (record.type === "genel_siparis" && record.status === "acik") return "Onay bekliyor";
+  if (record.type === "ihale_siparisi" && record.status === "ihale_bekliyor") return tenderCountdown(record.record_date, todayIstanbul());
+  if (record.type === "ihale_siparisi" && record.status === "onaylandi") return "Sözleşmeli";
+  return undefined;
 }

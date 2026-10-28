@@ -2,18 +2,36 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, FlaskConical, Loader2, Pencil, PhoneCall, Send, Trash2, Truck, Undo2, XCircle } from "lucide-react";
+import {
+  BadgeCheck,
+  CheckCircle2,
+  FileSignature,
+  FlaskConical,
+  Landmark,
+  Loader2,
+  Pencil,
+  PhoneCall,
+  Scale,
+  Send,
+  Tag,
+  Trash2,
+  Truck,
+  Undo2,
+  XCircle,
+} from "lucide-react";
 import {
   createShipment,
   deleteRecord,
   logCall,
   markSampleSent,
   requestSample,
+  setGuarantee,
   setResult,
   setYmStatus,
   type ActionResult,
 } from "@/app/(app)/actions";
 import { Sheet } from "./sheet";
+import { AdjustSheet, PricesSheet } from "./tender";
 import { formatMoney, formatPhone, formatQty, todayIstanbul } from "@/lib/format";
 import { telHref } from "@/lib/phone";
 import type { LineProgress, RecordLine, SalesRecord, SampleItem } from "@/lib/types";
@@ -57,16 +75,19 @@ export function RecordActions({
   progress: Record<string, LineProgress>;
   samples?: SampleItem[];
 }) {
-  const [sheet, setSheet] = useState<null | "call" | "result" | "ship" | "sample">(null);
+  const [sheet, setSheet] = useState<null | "call" | "result" | "ship" | "sample" | "prices" | "adjust">(null);
   const close = () => setSheet(null);
   const isDt = record.type === "dogrudan_temin";
   const isGs = record.type === "genel_siparis";
   const isYm = record.type === "yaklasik_maliyet";
+  const isTender = record.type === "ihale_siparisi";
+  const sampleable = isDt || isTender; // numune adımı doğrudan temin ve ihalede
   const canCall = isDt && (record.status === "arama_bekliyor" || record.status === "arandi");
   const decided = record.status === "onaylandi" || record.status === "reddedildi";
   const canShip = record.status === "onaylandi" && lines.some((l) => l.approved && Number(progress[l.id]?.remaining ?? 0) > 0);
   const ym = useAction();
   const sent = useAction();
+  const guarantee = useAction();
 
   return (
     <>
@@ -84,22 +105,59 @@ export function RecordActions({
             </button>
           </div>
         )}
-        {isDt && record.status === "numune_istendi" && (
+        {isTender && record.status === "ihale_bekliyor" && (
+          <div className="grid grid-cols-2 gap-2">
+            {record.guarantee_paid_at ? (
+              <button
+                onClick={() => guarantee.run(() => setGuarantee(record.id, false))}
+                className="btn-secondary text-emerald-700"
+                disabled={guarantee.pending}
+                title="Geri almak için dokunun"
+              >
+                <BadgeCheck size={18} /> Teminat yatırıldı
+              </button>
+            ) : (
+              <button
+                onClick={() => guarantee.run(() => setGuarantee(record.id, true))}
+                className="btn-primary"
+                disabled={guarantee.pending}
+              >
+                {guarantee.pending ? <Loader2 size={18} className="animate-spin" /> : <Landmark size={17} />} Teminat yatırıldı
+              </button>
+            )}
+            <button onClick={() => setSheet("prices")} className={record.prices_entered_at ? "btn-secondary" : "btn-primary"}>
+              <Tag size={17} /> {record.prices_entered_at ? "Fiyatlarımız" : "Fiyatlarımızı gir"}
+            </button>
+            <button onClick={() => setSheet("sample")} className="btn-secondary">
+              <FlaskConical size={18} /> Numune istendi
+            </button>
+            <button onClick={() => setSheet("result")} className="btn-secondary">
+              <FileSignature size={17} /> Sözleşme / sonuç
+            </button>
+          </div>
+        )}
+        <ErrorText error={guarantee.error} />
+        {sampleable && record.status === "numune_istendi" && (
           <div className="grid grid-cols-2 gap-2">
             <button onClick={() => sent.run(() => markSampleSent(record.id))} className="btn-primary" disabled={sent.pending}>
               {sent.pending ? <Loader2 size={18} className="animate-spin" /> : <Send size={17} />} Numune gönderildi
             </button>
             <button onClick={() => setSheet("result")} className="btn-secondary">
-              <CheckCircle2 size={18} /> Sonuç gir
+              {isTender ? <FileSignature size={17} /> : <CheckCircle2 size={18} />} {isTender ? "Sözleşme / sonuç" : "Sonuç gir"}
             </button>
             <button onClick={() => setSheet("sample")} className="btn-secondary col-span-2">
               <Pencil size={17} /> Numune talebini düzenle
             </button>
           </div>
         )}
-        {isDt && record.status === "numune_gonderildi" && (
+        {sampleable && record.status === "numune_gonderildi" && (
           <button onClick={() => setSheet("result")} className="btn-primary">
-            <CheckCircle2 size={18} /> Sonuç gir
+            {isTender ? <FileSignature size={17} /> : <CheckCircle2 size={18} />} {isTender ? "Sözleşme / sonuç" : "Sonuç gir"}
+          </button>
+        )}
+        {isTender && (record.status === "numune_istendi" || record.status === "numune_gonderildi") && (
+          <button onClick={() => setSheet("prices")} className="btn-secondary">
+            <Tag size={17} /> {record.prices_entered_at ? "Fiyatlarımız" : "Fiyatlarımızı gir"}
           </button>
         )}
         <ErrorText error={sent.error} />
@@ -113,9 +171,14 @@ export function RecordActions({
             <CheckCircle2 size={18} /> Onayla
           </button>
         )}
-        {(isDt || isGs) && decided && (
+        {isTender && record.status === "onaylandi" && (
+          <button onClick={() => setSheet("adjust")} className="btn-secondary">
+            <Scale size={17} /> İş artışı / eksiltmesi
+          </button>
+        )}
+        {(isDt || isGs || isTender) && decided && (
           <button onClick={() => setSheet("result")} className="btn-secondary">
-            <Pencil size={17} /> Sonucu düzenle
+            <Pencil size={17} /> {isTender && record.status === "onaylandi" ? "Sözleşmeyi düzenle" : "Sonucu düzenle"}
           </button>
         )}
         {isYm && record.status === "acik" && (
@@ -144,6 +207,8 @@ export function RecordActions({
       {/* Her açılışta güncel sonuçla yeniden başlasın diye yalnızca açıkken bağlanır */}
       {sheet === "result" && <ResultSheet open onClose={close} record={record} lines={lines} progress={progress} />}
       {sheet === "sample" && <SampleSheet open onClose={close} record={record} lines={lines} samples={samples} />}
+      {sheet === "prices" && <PricesSheet open onClose={close} record={record} lines={lines} />}
+      {sheet === "adjust" && <AdjustSheet open onClose={close} record={record} lines={lines} progress={progress} />}
       <ShipmentSheet open={sheet === "ship"} onClose={close} record={record} lines={lines} progress={progress} />
     </>
   );
@@ -330,6 +395,10 @@ function ResultSheet({
 }) {
   const { pending, error, run, setError } = useAction();
   const editing = record.status === "onaylandi" || record.status === "reddedildi";
+  // İhalede onay = sözleşme: sözleşmeye davet edilen ürünler ve hastanenin hepsini alacağı son tarih.
+  const tender = record.type === "ihale_siparisi";
+  const [contractEnd, setContractEnd] = useState(record.contract_end ?? "");
+  const [badEnd, setBadEnd] = useState(false);
   const [mode, setMode] = useState<"onay" | "red">(record.status === "reddedildi" ? "red" : "onay");
   const [note, setNote] = useState(editing ? (record.result_note ?? "") : "");
   const [sel, setSel] = useState<Record<string, { on: boolean; qty: string }>>(() =>
@@ -360,7 +429,14 @@ function ResultSheet({
       return run(() => setResult(record.id, false, note, []), onClose);
     }
     const chosen = lines.filter((l) => sel[l.id]?.on).map((l) => ({ line_id: l.id, approved_qty: parseNum(sel[l.id].qty) }));
-    if (!chosen.length) return setError("Onaylanan en az bir kalem seçin.");
+    if (!chosen.length) return setError(tender ? "Sözleşme imzalanan en az bir ürün seçin." : "Onaylanan en az bir kalem seçin.");
+    if (tender && lines.some((l) => sel[l.id]?.on && l.unit_price === null))
+      return setError("Sözleşmeli ürünlerin fiyatı girilmemiş. Önce “Fiyatlarımızı gir” ile verdiğimiz fiyatları girin.");
+    if (tender && !contractEnd) {
+      setBadEnd(true);
+      document.getElementById("contract-end")?.focus();
+      return setError("Sözleşme bitiş tarihini girin.");
+    }
     const zero = chosen.find((c) => !(c.approved_qty > 0));
     if (zero) return reject(zero.line_id, "Onaylanan miktar sıfırdan büyük olmalı.");
     const blocked = lines.find((l) => shipped(l.id) > (chosen.find((c) => c.line_id === l.id)?.approved_qty ?? 0));
@@ -370,11 +446,25 @@ function ResultSheet({
         `${blocked.product_name} için ${formatQty(shipped(blocked.id))} ${blocked.unit} sevkiyata aktarılmış. Onaylanan miktar bunun altına inemez.`,
       );
     }
-    run(() => setResult(record.id, true, note, chosen), onClose);
+    run(() => setResult(record.id, true, note, chosen, tender ? contractEnd : null), onClose);
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title={editing ? "Sonucu düzenle" : gs ? "Genel satış onayı" : "Doğrudan temin sonucu"}>
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={
+        editing
+          ? tender
+            ? "Sözleşmeyi düzenle"
+            : "Sonucu düzenle"
+          : gs
+            ? "Genel satış onayı"
+            : tender
+              ? "İhale sonucu"
+              : "Doğrudan temin sonucu"
+      }
+    >
       <div className="space-y-4">
         {gs ? null : (
           <div className="grid grid-cols-2 gap-1 rounded-2xl bg-canvas p-1">
@@ -382,7 +472,7 @@ function ResultSheet({
               onClick={() => setMode("onay")}
               className={`flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold ${mode === "onay" ? "bg-white text-emerald-700 shadow-sm" : "text-muted"}`}
             >
-              <CheckCircle2 size={17} /> Onaylandı
+              <CheckCircle2 size={17} /> {tender ? "Sözleşme imzalandı" : "Onaylandı"}
             </button>
             <button
               onClick={() => setMode("red")}
@@ -398,8 +488,26 @@ function ResultSheet({
             <p className="text-sm text-muted">
               {gs
                 ? "Kalemler onaylı olarak seçili geldi. Gerekirse miktarı düzeltin."
-                : "Onaylanan kalemleri seçin ve onaylanan miktarı düzeltin."}
+                : tender
+                  ? "Sözleşmeye davet edilen ürünleri seçip sözleşme miktarını girin. Seçilmeyen ürünler reddedilmiş sayılır."
+                  : "Onaylanan kalemleri seçin ve onaylanan miktarı düzeltin."}
             </p>
+            {tender && (
+              <div>
+                <label className="field-label" htmlFor="contract-end">
+                  Sözleşme bitiş tarihi
+                </label>
+                <input
+                  id="contract-end"
+                  type="date"
+                  value={contractEnd}
+                  onChange={(e) => (setBadEnd(false), setContractEnd(e.target.value))}
+                  aria-invalid={badEnd || undefined}
+                  className="input"
+                />
+                <p className="mt-1 text-[12px] text-muted">Hastanenin sözleşmedeki tüm ürünleri alacağı son tarih.</p>
+              </div>
+            )}
             {lines.map((l) => {
               const s = sel[l.id];
               return (
@@ -417,13 +525,14 @@ function ResultSheet({
                     <span className="min-w-0 flex-1">
                       <b className="block truncate text-[15px] font-semibold">{l.product_name}</b>
                       <span className="text-[13px] text-muted">
-                        {gs ? "Sipariş" : "Teklif"}: {formatQty(l.quantity)} {l.unit} · {formatMoney(l.unit_price, l.currency)}
+                        {gs ? "Sipariş" : tender ? "İhale" : "Teklif"}: {formatQty(l.quantity)} {l.unit} ·{" "}
+                        {l.unit_price === null ? "fiyat girilmedi" : formatMoney(l.unit_price, l.currency)}
                       </span>
                     </span>
                   </label>
                   {s.on && (
                     <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-8">
-                      <span className="text-[13px] text-muted">Onaylanan</span>
+                      <span className="text-[13px] text-muted">{tender ? "Sözleşme" : "Onaylanan"}</span>
                       <input
                         value={s.qty}
                         onChange={(e) => (
@@ -462,7 +571,8 @@ function ResultSheet({
         />
         <ErrorText error={error} />
         <button className={mode === "onay" ? "btn-primary w-full" : "btn-danger w-full"} disabled={pending} onClick={submit}>
-          <Spinner show={pending} /> {mode === "onay" ? "Onaylandı olarak kaydet" : "Reddedildi olarak kaydet"}
+          <Spinner show={pending} />{" "}
+          {mode === "onay" ? (tender ? "Sözleşme imzalandı olarak kaydet" : "Onaylandı olarak kaydet") : "Reddedildi olarak kaydet"}
         </button>
       </div>
     </Sheet>

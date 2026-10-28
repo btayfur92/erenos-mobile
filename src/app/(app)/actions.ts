@@ -31,10 +31,11 @@ function refresh() {
 }
 
 export interface LineInput {
+  id?: string; // düzenlemede mevcut kalem
   product_name: string;
   quantity: number;
   unit: string;
-  unit_price: number;
+  unit_price: number | null; // ihalede null (fiyat sonradan girilir)
   currency: string;
 }
 
@@ -57,7 +58,8 @@ export async function saveRecord(input: RecordInput): Promise<ActionResult> {
   const lines = input.lines.filter((l) => l.product_name.trim());
   if (!lines.length) return { ok: false, error: "En az bir ürün kalemi girin." };
   if (lines.some((l) => !(Number(l.quantity) > 0))) return { ok: false, error: "Ürün miktarları sıfırdan büyük olmalı." };
-  if (lines.some((l) => !(Number(l.unit_price) >= 0))) return { ok: false, error: "Fiyatları kontrol edin." };
+  if (input.type !== "ihale_siparisi" && lines.some((l) => l.unit_price === null || !(Number(l.unit_price) >= 0)))
+    return { ok: false, error: "Fiyatları kontrol edin." };
   const phone = input.contact_phone.trim() ? normalizePhone(input.contact_phone) : "";
   if (phone === null) return { ok: false, error: PHONE_ERROR };
   const ext = input.contact_ext.trim();
@@ -152,28 +154,131 @@ export async function setResult(
   approved: boolean,
   note: string,
   lines: { line_id: string; approved_qty: number }[],
+  contractEnd: string | null = null,
 ): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
   const { data: before } = await supabase.from("records").select("status, type").eq("id", recordId).single();
   const wasDecided = before?.status === "onaylandi" || before?.status === "reddedildi";
-  const label = before?.type === "genel_siparis" ? "Genel satış" : "Doğrudan temin";
+  const tender = before?.type === "ihale_siparisi";
+  if (tender && approved && !contractEnd) return { ok: false, error: "Sözleşme bitiş tarihini girin." };
+  const label = before?.type === "genel_siparis" ? "Genel satış" : tender ? "İhale" : "Doğrudan temin";
   const { error } = await supabase.rpc("set_result", {
     p_record_id: recordId,
     p_approved: approved,
     p_note: note,
     p_lines: approved ? lines : null,
+    p_contract_end: tender && approved ? contractEnd : null,
   });
   if (error) return fail(error);
 
   const { data: rec } = await supabase.from("records").select("hospital, file_no").eq("id", recordId).single();
   notify(
     {
-      title: wasDecided ? `${label} sonucu güncellendi` : approved ? `${label} onaylandı` : `${label} reddedildi`,
-      body: `${rec?.hospital ?? ""}${rec?.file_no ? ` · ${rec.file_no}` : ""}${approved ? ` · ${lines.length} kalem onaylandı` : ""}`,
+      title: wasDecided
+        ? `${label} sonucu güncellendi`
+        : tender && approved
+          ? "İhale sözleşmesi imzalandı"
+          : approved
+            ? `${label} onaylandı`
+            : `${label} reddedildi`,
+      body: `${rec?.hospital ?? ""}${rec?.file_no ? ` · ${rec.file_no}` : ""}${approved ? ` · ${lines.length} kalem ${tender ? "sözleşmeli" : "onaylandı"}` : ""}`,
       url: `/kayit/${recordId}`,
     },
     user.id,
   );
+  refresh();
+  return { ok: true };
+}
+
+async function tenderInfo(supabase: Awaited<ReturnType<typeof requireUser>>["supabase"], recordId: string) {
+  const { data } = await supabase.from("records").select("hospital, file_no").eq("id", recordId).single();
+  return `${data?.hospital ?? ""}${data?.file_no ? ` · ${data.file_no}` : ""}`;
+}
+
+/** İhale: teminat yatırıldı (paid=false geri alır). */
+export async function setGuarantee(recordId: string, paid: boolean): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  const { error } = await supabase.rpc("set_guarantee", { p_record_id: recordId, p_paid: paid });
+  if (error) return fail(error);
+  if (paid) notify({ title: "Teminat yatırıldı", body: await tenderInfo(supabase, recordId), url: `/kayit/${recordId}` }, user.id);
+  refresh();
+  return { ok: true };
+}
+
+/** İhale: verdiğimiz birim fiyatlar (tüm kalemler). */
+export async function setOurPrices(
+  recordId: string,
+  lines: { line_id: string; unit_price: number; currency: string }[],
+): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (lines.some((l) => !(l.unit_price >= 0))) return { ok: false, error: "Her kalem için birim fiyat girin." };
+  const { data: before } = await supabase.from("records").select("prices_entered_at").eq("id", recordId).single();
+  const { error } = await supabase.rpc("set_our_prices", { p_record_id: recordId, p_lines: lines });
+  if (error) return fail(error);
+  notify(
+    {
+      title: before?.prices_entered_at ? "İhale fiyatlarımız güncellendi" : "İhale fiyatlarımız girildi",
+      body: await tenderInfo(supabase, recordId),
+      url: `/kayit/${recordId}`,
+    },
+    user.id,
+  );
+  refresh();
+  return { ok: true };
+}
+
+/** İhale: rakip firmanın fiyatları (yeni ya da düzeltme; oldCompany düzeltilen firmanın eski adı). */
+export async function saveCompetitor(
+  recordId: string,
+  company: string,
+  oldCompany: string | null,
+  prices: { line_id: string; unit_price: number | null; currency: string }[],
+): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (!company.trim()) return { ok: false, error: "Firma adı gerekli." };
+  if (!prices.some((p) => p.unit_price !== null)) return { ok: false, error: "En az bir kalem için fiyat girin." };
+  const { error } = await supabase.rpc("save_competitor", {
+    p_record_id: recordId,
+    p_company: company,
+    p_old_company: oldCompany,
+    p_prices: prices,
+  });
+  if (error) return fail(error);
+  if (!oldCompany) {
+    notify(
+      { title: `Rakip fiyatı girildi: ${company.trim()}`, body: await tenderInfo(supabase, recordId), url: `/kayit/${recordId}` },
+      user.id,
+    );
+  }
+  refresh();
+  return { ok: true };
+}
+
+export async function deleteCompetitor(recordId: string, company: string): Promise<ActionResult> {
+  const { supabase } = await requireUser();
+  const { error } = await supabase.from("tender_bids").delete().eq("record_id", recordId).eq("company", company);
+  if (error) return fail(error);
+  refresh();
+  return { ok: true };
+}
+
+/** Sözleşmeli ihalede iş artışı / eksiltmesi (sözleşme miktarının en fazla %20'si). */
+export async function adjustContract(recordId: string, lineId: string, quantity: number, note: string): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (!(quantity > 0)) return { ok: false, error: "Miktar sıfırdan büyük olmalı." };
+  const { data: line } = await supabase.from("record_lines").select("product_name, unit, approved_qty").eq("id", lineId).single();
+  const { error } = await supabase.rpc("adjust_contract", { p_line_id: lineId, p_qty: quantity, p_note: note });
+  if (error) return fail(error);
+  if (line && Number(line.approved_qty) !== quantity) {
+    notify(
+      {
+        title: `${quantity > Number(line.approved_qty) ? "İş artışı" : "İş eksiltmesi"}: ${line.product_name}`,
+        body: `${formatQty(line.approved_qty)} → ${formatQty(quantity)} ${line.unit} · ${await tenderInfo(supabase, recordId)}`,
+        url: `/kayit/${recordId}`,
+      },
+      user.id,
+    );
+  }
   refresh();
   return { ok: true };
 }

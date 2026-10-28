@@ -13,7 +13,8 @@ export default async function NewRecordPage({ searchParams }: { searchParams: Pr
       <main className="mx-auto max-w-xl px-4 pt-4">
         <RecordForm
           initial={{
-            type: tip === "ym" ? "yaklasik_maliyet" : tip === "gs" ? "genel_siparis" : "dogrudan_temin",
+            type:
+              tip === "ym" ? "yaklasik_maliyet" : tip === "gs" ? "genel_siparis" : tip === "ihale" ? "ihale_siparisi" : "dogrudan_temin",
             record_date: todayIstanbul(),
           }}
         />

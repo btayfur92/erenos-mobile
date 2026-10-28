@@ -96,6 +96,7 @@ curl -H "Authorization: Bearer <CRON_SECRET>" "https://<site>/mobiluygulama/api/
 | Kart toplamı | Listede her kartta tek toplam görünür; farklı para birimleri TCMB günlük döviz satış kuruyla TL'ye çevrilip ≈ ile yazılır (kur alınamazsa birimlere göre ayrı). Kayıt detayının üstündeki toplam da aynı şekilde tek rakamdır; kalem satırları kendi para biriminde kalır |
 | Görüşmeler | Ziyaret notları: tarih (gün adıyla), hastane, servis, not. Herkes görür, en yeni tarih üstte, aranabilir, düzeltilebilir (kim düzelttiği yazılır). Yeni not herkese bildirim gönderir |
 | Sevkiyat | **Bekleyen Sevkiyatlar** / **Tamamlanan Sevkiyatlar** sekmeleri; tüm sevkiyatlar tek listede, her kartta türü yazar (gidecek yeşil, gelecek turuncu). Gidecek: doğrudan teminden aktarılan (sevk tarihli, *Teslim edildi*) ya da sağ üstteki **+ Ekle** ile elle eklenen (hastane/alıcı, ürün detayı, miktar, sevk tarihi). Gelecek: **+ Ekle** ile eklenen (tedarikçi, ürün detayı, miktar, beklenen tarih, *Teslim alındı*). Elle eklenenler `manual_shipments` tablosunda (`direction`: gelecek/gidecek), bekledikleri sürece düzeltilebilir (bildirim gitmez). Miktar her yerde zorunludur; elle eklenen sevkiyat parça parça teslim edilebilir (`manual_shipment_deliveries`): teslim edilen ve kalan kartta görünür, kalan bitince sevkiyat Tamamlanan Sevkiyatlar'a geçer. Bekleyenlerde en yakın tarih üstte, tamamlananlarda en son teslim üstte |
+| İhale | Ana ekranda Gündemdekiler'in yanındaki **İhale** sekmesi (Süreçte / Sözleşmeli / Reddedilen). Önceden ihale tarihi, ihale no, ilgili kişi ve ürünler (ad + miktar, fiyatsız) girilir; ihaleden önce Gündem'de geri sayımla durur. İhaleden 3 gün önce mesai içinde 2 saatte bir, son gün saatte bir herkese hatırlatma gider (son gün eksikler yazılır). **Teminat yatırıldı** (geri alınabilir, `guarantee_paid_at`) ve **Fiyatlarımızı gir** (tüm kalemler zorunlu, `set_our_prices`). İhaleden sonra **Rakip fiyatı ekle** (`tender_bids`, firma başına kalem fiyatları, teklif vermediği kalem boş): kalem başına TL'ye çevrilmiş sıralama ve kaçıncı olduğumuz. İsteğe bağlı numune DT ile aynı akış. **Sözleşme / sonuç**: imzalanan ürünler ve miktarları seçilir, seçilmeyenler reddedilir; sözleşme bitiş tarihi zorunlu (`contract_start` imza günü). **İş artışı / eksiltmesi**: sözleşme miktarının ±%20'si içinde, sevk edilenin altına inmeden (`adjust_contract`, geçmiş `contract_adjustments`). Kartta süre baremi ve ürün baremleri; sevkiyat DT gibi. Bitişe 1 ay kala kart Gündem'de kırmızı çerçeveyle görünür ve bir kez bildirim gider |
 | Kullanıcılar | Yönetici ad, kullanıcı adı ve şifreyi değiştirebilir, başka kullanıcıyı aynı yetkilerle yönetici yapabilir veya pasife alabilir |
 
 Bildirimler, işlemi yapan kişi hariç herkese gider (`src/app/(app)/actions.ts` içindeki `notify`). Arama hatırlatmaları herkese gider.
@@ -107,7 +108,7 @@ src/app/login/                Giriş
 src/app/(app)/                Ana liste (Reddedilen sekmesi dahil), yeni kayıt, kayıt detayı, sevkiyat, görüşmeler, ayarlar
 src/app/(app)/actions.ts      Tüm kayıt işlemleri (server actions)
 src/app/api/push/             Bildirim aboneliği ve deneme bildirimi
-src/app/api/cron/reminders/   2 saatlik arama hatırlatması
+src/app/api/cron/reminders/   Arama, numune, ihale ve sözleşme hatırlatmaları
 src/lib/                      Supabase istemcileri, push, mesai saati, biçimlendirme
 public/sw.js                  Service worker (bildirim + çevrimdışı sayfa)
 supabase/migrations/          Veritabanı şeması, RLS ve iş akışı fonksiyonları
@@ -116,5 +117,4 @@ supabase/cron.sql             Zamanlanmış hatırlatma işi
 
 ## Sonraki adımlar
 
-- İhale Siparişi tipi (`record_type` enum'unda yer ayrıldı)
 - Rollere göre yetki ayrımı (şimdilik herkes her işi yapabilir, kullanıcı yönetimi yöneticide)

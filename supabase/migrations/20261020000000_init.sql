@@ -1,5 +1,5 @@
 -- Erenos Mobile — ilk şema
--- Satış kayıtları (Yaklaşık Maliyet, Doğrudan Temin, Genel Satış), ürün kalemleri,
+-- Satış kayıtları (Yaklaşık Maliyet, Doğrudan Temin, İhale, Genel Satış), ürün kalemleri,
 -- arama notları, sevkiyatlar, push abonelikleri ve kullanıcı profilleri.
 
 create extension if not exists pgcrypto;
@@ -11,7 +11,7 @@ create extension if not exists pgcrypto;
 create type public.record_type as enum (
   'yaklasik_maliyet',
   'dogrudan_temin',
-  'ihale_siparisi',   -- ileride
+  'ihale_siparisi',   -- arayüzde "İhale"
   'genel_siparis'     -- arayüzde "Genel Satış"
 );
 
@@ -19,9 +19,12 @@ create type public.record_type as enum (
 -- DT:  arama_bekliyor -> arandi -> onaylandi | reddedildi
 --      Hastane sonuçtan önce numune isteyebilir (isteğe bağlı adım):
 --      arama_bekliyor | arandi -> numune_istendi -> numune_gonderildi -> onaylandi | reddedildi
+-- İhale: ihale_bekliyor -> [numune_istendi -> numune_gonderildi] -> onaylandi (sözleşme) | reddedildi
+--      Fiyatlar ihale öncesi girilir, rakip fiyatları ihaleden sonra; onaylananlar sözleşmeli kalemlerdir.
 -- GS:  acik -> onaylandi             (sipariş zaten alınmıştır; reddedilmez, aranmaz)
 create type public.record_status as enum (
   'acik',
+  'ihale_bekliyor',
   'arama_bekliyor',
   'arandi',
   'numune_istendi',
@@ -112,6 +115,13 @@ create table public.records (
   sample_note text,
   sample_sent_at timestamptz,             -- numune gönderildiği an
   sample_sent_by uuid references public.profiles (id) on delete set null,
+  -- İhale: record_date ihale tarihidir.
+  guarantee_paid_at timestamptz,          -- teminat yatırıldı
+  guarantee_paid_by uuid references public.profiles (id) on delete set null,
+  prices_entered_at timestamptz,          -- verdiğimiz fiyatlar girildi
+  contract_start date,                    -- sözleşme imza tarihi
+  contract_end date,                      -- hastanenin tüm ürünleri alacağı son tarih
+  contract_alarm_sent_at timestamptz,     -- son ay bildirimi gönderildi
   last_reminded_at timestamptz,
   created_by uuid references public.profiles (id) on delete set null default auth.uid(),
   created_at timestamptz not null default now(),
@@ -120,7 +130,7 @@ create table public.records (
     (type = 'yaklasik_maliyet' and status in ('acik', 'onaylandi', 'reddedildi'))
     or (type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'numune_istendi', 'numune_gonderildi', 'onaylandi', 'reddedildi'))
     or (type = 'genel_siparis' and status in ('acik', 'onaylandi'))
-    or (type = 'ihale_siparisi')
+    or (type = 'ihale_siparisi' and status in ('ihale_bekliyor', 'numune_istendi', 'numune_gonderildi', 'onaylandi', 'reddedildi'))
   )
 );
 
@@ -134,10 +144,11 @@ create table public.record_lines (
   product_name text not null,
   quantity numeric(14, 2) not null check (quantity > 0),
   unit text not null default 'Adet',
-  unit_price numeric(14, 4) not null check (unit_price >= 0),
+  unit_price numeric(14, 4) check (unit_price is null or unit_price >= 0),  -- ihalede fiyat sonradan girilir
   currency text not null default 'TRY' check (currency in ('TRY', 'USD', 'EUR', 'GBP')),
   approved boolean,              -- null: sonuç girilmedi
   approved_qty numeric(14, 2) check (approved_qty is null or approved_qty >= 0),
+  contract_qty numeric(14, 2),   -- ihale: sözleşmedeki ilk miktar (iş artışı/eksiltmesi en fazla %20)
   created_at timestamptz not null default now()
 );
 
@@ -166,6 +177,35 @@ create table public.sample_items (
 );
 
 create index sample_items_record_idx on public.sample_items (record_id, sort_order);
+
+-- İhaleye katılan rakip firmaların kalem bazında fiyatları (karşılaştırma için).
+create table public.tender_bids (
+  id uuid primary key default gen_random_uuid(),
+  record_id uuid not null references public.records (id) on delete cascade,
+  line_id uuid not null references public.record_lines (id) on delete cascade,
+  company text not null check (length(trim(company)) > 0),
+  unit_price numeric(14, 4) not null check (unit_price >= 0),
+  currency text not null default 'TRY' check (currency in ('TRY', 'USD', 'EUR', 'GBP')),
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  unique (line_id, company)
+);
+
+create index tender_bids_record_idx on public.tender_bids (record_id);
+
+-- Sözleşmeli ihalede iş artışı / eksiltmesi geçmişi.
+create table public.contract_adjustments (
+  id uuid primary key default gen_random_uuid(),
+  record_id uuid not null references public.records (id) on delete cascade,
+  line_id uuid not null references public.record_lines (id) on delete cascade,
+  old_qty numeric(14, 2) not null,
+  new_qty numeric(14, 2) not null,
+  note text,
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create index contract_adjustments_record_idx on public.contract_adjustments (record_id, created_at desc);
 
 create table public.shipments (
   id uuid primary key default gen_random_uuid(),
@@ -340,6 +380,8 @@ declare
   v_line jsonb;
   v_i int := 0;
   v_status public.record_status;
+  v_type public.record_type := p_type;
+  v_line_id uuid;
 begin
   if jsonb_array_length(coalesce(p_lines, '[]'::jsonb)) = 0 then
     raise exception 'En az bir ürün kalemi girilmelidir.';
@@ -348,7 +390,8 @@ begin
   if v_id is null then
     v_status := case p_type when 'yaklasik_maliyet' then 'acik'::public.record_status
                             when 'dogrudan_temin' then 'arama_bekliyor'::public.record_status
-                            when 'genel_siparis' then 'acik'::public.record_status end;
+                            when 'genel_siparis' then 'acik'::public.record_status
+                            when 'ihale_siparisi' then 'ihale_bekliyor'::public.record_status end;
     if v_status is null then
       raise exception 'Bu satış tipi henüz desteklenmiyor.';
     end if;
@@ -373,19 +416,41 @@ begin
     if not found then
       raise exception 'Kayıt bulunamadı.';
     end if;
-    delete from record_lines where record_id = v_id;
+    select type into v_type from records where id = v_id;
+    -- Kalemler kimlikleriyle güncellenir (rakip fiyatları vb. kaleme bağlı kalır); listeden çıkarılanlar silinir.
+    delete from record_lines
+    where record_id = v_id
+      and id not in (select (x ->> 'id')::uuid from jsonb_array_elements(p_lines) x where coalesce(x ->> 'id', '') <> '');
   end if;
 
   for v_line in select * from jsonb_array_elements(p_lines) loop
-    insert into record_lines (record_id, sort_order, product_name, quantity, unit, unit_price, currency)
-    values (
-      v_id, v_i,
-      trim(v_line ->> 'product_name'),
-      (v_line ->> 'quantity')::numeric,
-      coalesce(nullif(trim(v_line ->> 'unit'), ''), 'Adet'),
-      (v_line ->> 'unit_price')::numeric,
-      coalesce(nullif(v_line ->> 'currency', ''), 'TRY')
-    );
+    if v_type <> 'ihale_siparisi' and coalesce((v_line ->> 'unit_price')::numeric, -1) < 0 then
+      raise exception 'Birim fiyat girilmelidir.';
+    end if;
+    v_line_id := null;
+    if coalesce(v_line ->> 'id', '') <> '' then
+      update record_lines set
+        sort_order = v_i,
+        product_name = trim(v_line ->> 'product_name'),
+        quantity = (v_line ->> 'quantity')::numeric,
+        unit = coalesce(nullif(trim(v_line ->> 'unit'), ''), 'Adet'),
+        -- ihalede fiyat bu formdan değil "Fiyatlarımızı gir" adımından gelir
+        unit_price = case when v_type = 'ihale_siparisi' then unit_price else (v_line ->> 'unit_price')::numeric end,
+        currency = case when v_type = 'ihale_siparisi' then currency else coalesce(nullif(v_line ->> 'currency', ''), 'TRY') end
+      where id = (v_line ->> 'id')::uuid and record_id = v_id
+      returning id into v_line_id;
+    end if;
+    if v_line_id is null then
+      insert into record_lines (record_id, sort_order, product_name, quantity, unit, unit_price, currency)
+      values (
+        v_id, v_i,
+        trim(v_line ->> 'product_name'),
+        (v_line ->> 'quantity')::numeric,
+        coalesce(nullif(trim(v_line ->> 'unit'), ''), 'Adet'),
+        case when v_type = 'ihale_siparisi' then null else (v_line ->> 'unit_price')::numeric end,
+        coalesce(nullif(v_line ->> 'currency', ''), 'TRY')
+      );
+    end if;
     v_i := v_i + 1;
   end loop;
 
@@ -428,7 +493,9 @@ declare
 begin
   if not exists (
     select 1 from records
-    where id = p_record_id and type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'numune_istendi')
+    where id = p_record_id
+      and ((type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'numune_istendi'))
+        or (type = 'ihale_siparisi' and status in ('ihale_bekliyor', 'numune_istendi')))
   ) then
     raise exception 'Bu kayıt için numune talebi girilemez.';
   end if;
@@ -466,21 +533,23 @@ as $$
 begin
   update records
   set status = 'numune_gonderildi', sample_sent_at = now(), sample_sent_by = auth.uid()
-  where id = p_record_id and type = 'dogrudan_temin' and status = 'numune_istendi';
+  where id = p_record_id and type in ('dogrudan_temin', 'ihale_siparisi') and status = 'numune_istendi';
   if not found then
     raise exception 'Bu kayıtta gönderilmeyi bekleyen numune yok.';
   end if;
 end;
 $$;
 
--- DT / Genel Satış sonucu (ilk giriş veya sonradan düzeltme). Genel satış yalnızca onaylanır.
+-- DT / İhale / Genel Satış sonucu (ilk giriş veya sonradan düzeltme). Genel satış yalnızca onaylanır.
+-- İhalede onay = sözleşme: p_contract_end zorunludur, onaylanan miktar sözleşme miktarı (contract_qty) olur.
 -- p_lines (onayda): [{line_id, approved_qty}] — listede olmayan kalemler reddedilmiş sayılır.
 -- Sevkiyata aktarılmış miktarın altına inilemez.
 create or replace function public.set_result(
   p_record_id uuid,
   p_approved boolean,
   p_note text,
-  p_lines jsonb
+  p_lines jsonb,
+  p_contract_end date default null
 )
 returns void
 language plpgsql
@@ -493,14 +562,20 @@ declare
   v_max numeric;
   v_product text;
   v_shipped numeric;
+  v_type public.record_type;
 begin
+  select type into v_type from records where id = p_record_id;
   if not exists (
     select 1 from records
     where id = p_record_id
       and ((type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'numune_istendi', 'numune_gonderildi', 'onaylandi', 'reddedildi'))
+        or (type = 'ihale_siparisi' and status in ('ihale_bekliyor', 'numune_istendi', 'numune_gonderildi', 'onaylandi', 'reddedildi'))
         or (type = 'genel_siparis' and status in ('acik', 'onaylandi')))
   ) then
     raise exception 'Bu kayıt için sonuç girilemez.';
+  end if;
+  if p_approved and v_type = 'ihale_siparisi' and p_contract_end is null then
+    raise exception 'Sözleşme bitiş tarihi girilmelidir.';
   end if;
   if not p_approved and exists (select 1 from records where id = p_record_id and type = 'genel_siparis') then
     raise exception 'Genel satış reddedilemez.';
@@ -521,9 +596,15 @@ begin
       if v_qty is null or v_qty <= 0 then
         raise exception 'Onaylanan miktar sıfırdan büyük olmalıdır.';
       end if;
-      update record_lines set approved = true, approved_qty = v_qty
+      update record_lines set approved = true, approved_qty = v_qty,
+        contract_qty = case when v_type = 'ihale_siparisi' then v_qty end
       where id = (v_line ->> 'line_id')::uuid;
     end loop;
+    if v_type = 'ihale_siparisi' and exists (
+      select 1 from record_lines where record_id = p_record_id and approved and unit_price is null
+    ) then
+      raise exception 'Sözleşmeli kalemlerin fiyatı girilmemiş. Önce "Fiyatlarımızı gir" ile verdiğimiz fiyatları girin.';
+    end if;
   else
     update record_lines set approved = false, approved_qty = null where record_id = p_record_id;
   end if;
@@ -545,8 +626,132 @@ begin
   set status = case when p_approved then 'onaylandi'::public.record_status
                     else 'reddedildi'::public.record_status end,
       result_at = now(),
-      result_note = nullif(trim(p_note), '')
+      result_note = nullif(trim(p_note), ''),
+      contract_start = case when v_type = 'ihale_siparisi' and p_approved then coalesce(contract_start, current_date) end,
+      contract_end = case when v_type = 'ihale_siparisi' and p_approved then p_contract_end end,
+      contract_alarm_sent_at = case when contract_end is distinct from p_contract_end then null else contract_alarm_sent_at end
   where id = p_record_id;
+end;
+$$;
+
+-- İhale: teminat yatırıldı (p_paid=false geri alır).
+create or replace function public.set_guarantee(p_record_id uuid, p_paid boolean)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  update records
+  set guarantee_paid_at = case when p_paid then now() end,
+      guarantee_paid_by = case when p_paid then auth.uid() end
+  where id = p_record_id and type = 'ihale_siparisi' and status not in ('onaylandi', 'reddedildi');
+  if not found then
+    raise exception 'Bu ihalede teminat bilgisi değiştirilemez.';
+  end if;
+end;
+$$;
+
+-- İhale: verdiğimiz fiyatlar. p_lines: [{line_id, unit_price, currency}] — tüm kalemler için zorunlu.
+create or replace function public.set_our_prices(p_record_id uuid, p_lines jsonb)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_line jsonb;
+begin
+  if not exists (select 1 from records where id = p_record_id and type = 'ihale_siparisi' and status not in ('onaylandi', 'reddedildi')) then
+    raise exception 'Bu ihalede fiyatlar değiştirilemez.';
+  end if;
+  for v_line in select * from jsonb_array_elements(coalesce(p_lines, '[]'::jsonb)) loop
+    if coalesce((v_line ->> 'unit_price')::numeric, -1) < 0 then
+      raise exception 'Her kalem için birim fiyat girilmelidir.';
+    end if;
+    update record_lines
+    set unit_price = (v_line ->> 'unit_price')::numeric, currency = coalesce(nullif(v_line ->> 'currency', ''), 'TRY')
+    where id = (v_line ->> 'line_id')::uuid and record_id = p_record_id;
+  end loop;
+  if exists (select 1 from record_lines where record_id = p_record_id and unit_price is null) then
+    raise exception 'Her kalem için birim fiyat girilmelidir.';
+  end if;
+  update records set prices_entered_at = now() where id = p_record_id;
+end;
+$$;
+
+-- İhale: bir rakip firmanın fiyatları (yeni ya da düzeltme). p_prices: [{line_id, unit_price, currency}];
+-- fiyatı olmayan kalem o firmanın teklif vermediği kalemdir.
+create or replace function public.save_competitor(p_record_id uuid, p_company text, p_old_company text, p_prices jsonb)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_item jsonb;
+begin
+  if not exists (select 1 from records where id = p_record_id and type = 'ihale_siparisi') then
+    raise exception 'Kayıt bulunamadı.';
+  end if;
+  if length(trim(coalesce(p_company, ''))) = 0 then
+    raise exception 'Firma adı gerekli.';
+  end if;
+  if lower(trim(p_company)) is distinct from lower(trim(coalesce(p_old_company, p_company)))
+     and exists (select 1 from tender_bids where record_id = p_record_id and lower(company) = lower(trim(p_company))) then
+    raise exception 'Bu firma zaten girilmiş.';
+  end if;
+  delete from tender_bids where record_id = p_record_id and lower(company) = lower(trim(coalesce(p_old_company, p_company)));
+  for v_item in select * from jsonb_array_elements(coalesce(p_prices, '[]'::jsonb)) loop
+    if (v_item ->> 'unit_price') is not null then
+      if (v_item ->> 'unit_price')::numeric < 0 then
+        raise exception 'Fiyat sıfırdan küçük olamaz.';
+      end if;
+      insert into tender_bids (record_id, line_id, company, unit_price, currency)
+      select p_record_id, l.id, trim(p_company), (v_item ->> 'unit_price')::numeric, coalesce(nullif(v_item ->> 'currency', ''), 'TRY')
+      from record_lines l where l.id = (v_item ->> 'line_id')::uuid and l.record_id = p_record_id;
+    end if;
+  end loop;
+  if not exists (select 1 from tender_bids where record_id = p_record_id and company = trim(p_company)) then
+    raise exception 'En az bir kalem için fiyat girin.';
+  end if;
+end;
+$$;
+
+-- Sözleşmeli ihalede iş artışı / eksiltmesi: sözleşme miktarının en fazla %20 fazlası ya da eksiği.
+create or replace function public.adjust_contract(p_line_id uuid, p_qty numeric, p_note text)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_line record_lines;
+  v_used numeric;
+begin
+  select l.* into v_line from record_lines l join records r on r.id = l.record_id
+  where l.id = p_line_id and r.type = 'ihale_siparisi' and r.status = 'onaylandi' and l.approved
+  for update of l;
+  if not found then
+    raise exception 'Bu kalemde iş artışı / eksiltmesi yapılamaz.';
+  end if;
+  if p_qty is null or p_qty <= 0 then
+    raise exception 'Miktar sıfırdan büyük olmalıdır.';
+  end if;
+  if p_qty > round(v_line.contract_qty * 1.2, 2) or p_qty < round(v_line.contract_qty * 0.8, 2) then
+    raise exception 'Sözleşme miktarının en fazla %%20 fazlası ya da eksiği girilebilir (% ile % arası).',
+      round(v_line.contract_qty * 0.8, 2), round(v_line.contract_qty * 1.2, 2);
+  end if;
+  select coalesce(sum(quantity), 0) into v_used from shipment_items where line_id = p_line_id;
+  if p_qty < v_used then
+    raise exception '% sevkiyata aktarılmış; miktar bunun altına inemez.', v_used;
+  end if;
+  if p_qty = v_line.approved_qty then
+    return;
+  end if;
+  insert into contract_adjustments (record_id, line_id, old_qty, new_qty, note)
+  values (v_line.record_id, p_line_id, v_line.approved_qty, p_qty, nullif(trim(p_note), ''));
+  update record_lines set approved_qty = p_qty where id = p_line_id;
 end;
 $$;
 
@@ -652,6 +857,8 @@ alter table public.records enable row level security;
 alter table public.record_lines enable row level security;
 alter table public.call_logs enable row level security;
 alter table public.sample_items enable row level security;
+alter table public.tender_bids enable row level security;
+alter table public.contract_adjustments enable row level security;
 alter table public.shipments enable row level security;
 alter table public.shipment_items enable row level security;
 alter table public.manual_shipments enable row level security;
@@ -671,6 +878,10 @@ create policy "record_lines_all" on public.record_lines
 create policy "call_logs_all" on public.call_logs
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 create policy "sample_items_all" on public.sample_items
+  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+create policy "tender_bids_all" on public.tender_bids
+  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+create policy "contract_adjustments_all" on public.contract_adjustments
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 create policy "shipments_all" on public.shipments
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());

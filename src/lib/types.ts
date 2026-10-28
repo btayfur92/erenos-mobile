@@ -1,6 +1,14 @@
 export type RecordType = "yaklasik_maliyet" | "dogrudan_temin" | "ihale_siparisi" | "genel_siparis";
 
-export type RecordStatus = "acik" | "arama_bekliyor" | "arandi" | "numune_istendi" | "numune_gonderildi" | "onaylandi" | "reddedildi";
+export type RecordStatus =
+  | "acik"
+  | "ihale_bekliyor"
+  | "arama_bekliyor"
+  | "arandi"
+  | "numune_istendi"
+  | "numune_gonderildi"
+  | "onaylandi"
+  | "reddedildi";
 
 export type ShipmentStatus = "sevk_bekliyor" | "teslim_edildi";
 
@@ -11,10 +19,11 @@ export interface RecordLine {
   product_name: string;
   quantity: number;
   unit: string;
-  unit_price: number;
+  unit_price: number | null; // ihalede fiyat sonradan girilir
   currency: string;
   approved: boolean | null;
   approved_qty: number | null;
+  contract_qty: number | null; // ihale: sözleşmedeki ilk miktar
 }
 
 export interface SalesRecord {
@@ -36,6 +45,12 @@ export interface SalesRecord {
   sample_note: string | null;
   sample_sent_at: string | null;
   sample_sent_by: string | null;
+  guarantee_paid_at: string | null;
+  guarantee_paid_by: string | null;
+  prices_entered_at: string | null;
+  contract_start: string | null;
+  contract_end: string | null;
+  contract_alarm_sent_at: string | null;
   last_reminded_at: string | null;
   created_by: string | null;
   created_at: string;
@@ -59,6 +74,29 @@ export interface SampleItem {
   product_name: string;
   quantity: number;
   unit: string;
+}
+
+/** İhalede rakip firmanın kalem fiyatı. */
+export interface TenderBid {
+  id: string;
+  record_id: string;
+  line_id: string;
+  company: string;
+  unit_price: number;
+  currency: string;
+  created_at: string;
+}
+
+/** Sözleşmeli ihalede iş artışı / eksiltmesi. */
+export interface ContractAdjustment {
+  id: string;
+  record_id: string;
+  line_id: string;
+  old_qty: number;
+  new_qty: number;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
 }
 
 export interface CallLog {
@@ -147,7 +185,7 @@ export interface Profile {
 export const RECORD_TYPE_LABEL: Record<RecordType, string> = {
   yaklasik_maliyet: "Yaklaşık Maliyet",
   dogrudan_temin: "Doğrudan Temin",
-  ihale_siparisi: "İhale Siparişi",
+  ihale_siparisi: "İhale",
   genel_siparis: "Genel Satış",
 };
 
@@ -160,6 +198,7 @@ export const RECORD_TYPE_SHORT: Record<RecordType, string> = {
 
 export const STATUS_LABEL: Record<RecordStatus, string> = {
   acik: "Açık",
+  ihale_bekliyor: "İhale süreci",
   arama_bekliyor: "Arama bekliyor",
   arandi: "Arandı, sonuç bekleniyor",
   numune_istendi: "Numune istendi",
@@ -179,4 +218,25 @@ export function isFullyDelivered(record: SalesRecord, progress: Map<string, Line
     approved.length > 0 &&
     approved.every((l) => Number(progress.get(l.id)?.remaining ?? 1) <= 0 && Number(progress.get(l.id)?.in_shipment ?? 1) <= 0)
   );
+}
+
+/** İhale tarihine kalan gün (İstanbul bugününe göre; geçmişse negatif). */
+export function daysUntil(date: string, today: string) {
+  return Math.round((Date.parse(date.slice(0, 10)) - Date.parse(today)) / 86_400_000);
+}
+
+/** Sözleşmeli ihale son aya girdi mi (bitişe 30 gün ya da daha az kaldı)? */
+export function inLastMonth(record: Pick<SalesRecord, "type" | "status" | "contract_end">, today: string) {
+  return (
+    record.type === "ihale_siparisi" &&
+    record.status === "onaylandi" &&
+    !!record.contract_end &&
+    daysUntil(record.contract_end, today) <= 30
+  );
+}
+
+/** "İhaleye 3 gün kaldı" / "İhale bugün" / "İhale yapıldı" */
+export function tenderCountdown(date: string, today: string) {
+  const d = daysUntil(date, today);
+  return d > 1 ? `İhaleye ${d} gün kaldı` : d === 1 ? "İhale yarın" : d === 0 ? "İhale bugün" : "İhale yapıldı";
 }

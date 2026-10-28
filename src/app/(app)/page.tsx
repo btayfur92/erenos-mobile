@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, Clock, FileText, Search, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, FileSignature, FileText, Gavel, Search, XCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
 import { getRates } from "@/lib/fx";
@@ -8,10 +8,12 @@ import { RecordCard } from "@/components/record-card";
 import { EmptyState } from "@/components/empty-state";
 import { ChipStrip } from "@/components/chip-strip";
 import { RejectedList } from "@/components/rejected-list";
-import { isFullyDelivered, type SalesRecord } from "@/lib/types";
+import { inLastMonth, isFullyDelivered, type SalesRecord } from "@/lib/types";
+import { todayIstanbul } from "@/lib/format";
 
 const FILTERS = [
   { key: "gundem", label: "Gündemdekiler" },
+  { key: "ihale", label: "İhale" },
   { key: "dt", label: "Doğrudan Temin" },
   { key: "gs", label: "Genel Satış" },
   { key: "ym", label: "Yaklaşık Maliyet" },
@@ -24,23 +26,38 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // Doğrudan Temin sekmesi sonuçlanmış kayıtları Onaylanan / Reddedilen olarak ayırır.
   // Yaklaşık maliyetler Gündem'e girmez; kendi sekmesinde Bekleyen / Onaylanan / Reddedilen olarak durur.
   // Genel satış onaylanana kadar Gündem'de, sonra Genel Satış sekmesinde (teslimatı sürenler üstte).
-  const d = dParam ?? (f === "ym" ? "bekle" : "onay");
+  // İhale sekmesi: Süreçte (ihale öncesi / numune) · Sözleşmeli · Reddedilen.
+  const d = dParam ?? (f === "ym" ? "bekle" : f === "ihale" ? "surec" : "onay");
+  const today = todayIstanbul();
+  const monthAhead = new Date(Date.parse(today) + 30 * 86_400_000).toISOString().slice(0, 10);
   const resolved = d === "red" ? "reddedildi" : d === "bekle" && f === "ym" ? "acik" : "onaylandi";
   const { supabase, profile } = await requireUser();
 
   let query = supabase
     .from("records")
     .select("*, record_lines(*)")
-    .in("type", ["yaklasik_maliyet", "dogrudan_temin", "genel_siparis"])
+    .in("type", ["yaklasik_maliyet", "dogrudan_temin", "genel_siparis", "ihale_siparisi"])
     .order("record_date", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(300);
 
-  // Gündem: henüz sonuçlanmamış doğrudan teminler ve onay bekleyen genel satışlar (DT hiç "acik" olmaz, GS hiç aranmaz).
+  // Gündem: henüz sonuçlanmamış doğrudan teminler ve ihaleler, onay bekleyen genel satışlar (DT hiç "acik" olmaz, GS hiç aranmaz)
+  // ve sözleşmesinin son ayına girmiş ihaleler (kırmızı çerçeveli).
   if (f === "gundem")
     query = query
-      .in("type", ["dogrudan_temin", "genel_siparis"])
-      .in("status", ["arama_bekliyor", "arandi", "numune_istendi", "numune_gonderildi", "acik"]);
+      .in("type", ["dogrudan_temin", "genel_siparis", "ihale_siparisi"])
+      .or(
+        `status.in.(arama_bekliyor,arandi,numune_istendi,numune_gonderildi,acik,ihale_bekliyor),and(type.eq.ihale_siparisi,status.eq.onaylandi,contract_end.lte.${monthAhead})`,
+      );
+  if (f === "ihale") {
+    query = query.eq("type", "ihale_siparisi");
+    query =
+      d === "onay"
+        ? query.eq("status", "onaylandi")
+        : d === "red"
+          ? query.eq("status", "reddedildi")
+          : query.in("status", ["ihale_bekliyor", "numune_istendi", "numune_gonderildi"]);
+  }
   if (f === "arama") query = query.eq("status", "arama_bekliyor");
   if (f === "dt") query = query.eq("type", "dogrudan_temin").eq("status", resolved);
   if (f === "gs") query = query.eq("type", "genel_siparis").eq("status", "onaylandi");
@@ -69,10 +86,19 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   ]);
 
   // Doğrudan Temin ve Genel Satış: tamamı teslim edilenler en alta (kendi içlerinde tarih sırası korunur).
-  const list =
-    f === "gs" || f === "dt"
-      ? [...(records ?? [])].sort((a, b) => Number(isFullyDelivered(a, progress)) - Number(isFullyDelivered(b, progress)))
-      : records;
+  // İhale: süreçtekiler en yakın ihale tarihi üstte; sözleşmeliler en yakın bitiş üstte, tamamı teslim edilenler en altta.
+  let list = records ?? [];
+  if (f === "gs" || f === "dt")
+    list = [...list].sort((a, b) => Number(isFullyDelivered(a, progress)) - Number(isFullyDelivered(b, progress)));
+  if (f === "ihale" && d === "surec") list = [...list].sort((a, b) => a.record_date.localeCompare(b.record_date));
+  if (f === "ihale" && d === "onay")
+    list = [...list].sort(
+      (a, b) =>
+        Number(isFullyDelivered(a, progress)) - Number(isFullyDelivered(b, progress)) ||
+        (a.contract_end ?? "").localeCompare(b.contract_end ?? ""),
+    );
+  // Gündem'de son aya girmiş ama tamamı teslim edilmiş sözleşme gösterilmez.
+  if (f === "gundem") list = list.filter((r) => !(r.status === "onaylandi" && isFullyDelivered(r, progress)));
 
   const firstName = (profile.full_name || profile.username).split(" ")[0];
 
@@ -132,6 +158,31 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           })}
         </ChipStrip>
 
+        {f === "ihale" && (
+          <div className="mt-3 grid grid-cols-3 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
+            {(
+              [
+                ["surec", "Süreçte", Gavel, "bg-teal-50 text-teal-700"],
+                ["onay", "Sözleşmeli", FileSignature, "bg-emerald-50 text-emerald-700"],
+                ["red", "Reddedilen", XCircle, "bg-accent-50 text-accent-700"],
+              ] as const
+            ).map(([key, label, Icon, activeCls]) => {
+              const params = new URLSearchParams({ f });
+              if (key !== "surec") params.set("d", key);
+              if (q) params.set("q", q);
+              return (
+                <Link
+                  key={key}
+                  href={`/?${params}`}
+                  className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-[14px] font-semibold ${d === key ? activeCls : "text-muted"}`}
+                >
+                  <Icon size={16} /> {label}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+
         {(f === "dt" || f === "ym") && (
           <div className={`mt-3 grid gap-1 rounded-2xl bg-white p-1 ring-1 ring-line ${f === "ym" ? "grid-cols-3" : "grid-cols-2"}`}>
             {(
@@ -162,7 +213,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         ) : (
           <div className="mt-4 space-y-3">
             {list?.length ? (
-              list.map((r) => <RecordCard key={r.id} record={r} progress={progress} rates={rates} />)
+              list.map((r) => <RecordCard key={r.id} record={r} progress={progress} rates={rates} alarm={inLastMonth(r, today)} />)
             ) : (
               <EmptyState
                 icon={<FileText size={26} />}
@@ -172,11 +223,15 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                     ? "Farklı bir arama deneyin."
                     : f === "gs"
                       ? "Onaylanan genel satışlar burada görünür."
-                      : "İlk kaydı alttaki + ile ekleyin."
+                      : f === "ihale" && d !== "surec"
+                        ? d === "onay"
+                          ? "Sözleşmesi imzalanan ihaleler burada görünür."
+                          : "Reddedilen ihaleler burada görünür."
+                        : "İlk kaydı alttaki + ile ekleyin."
                 }
               >
                 {!term && (
-                  <Link href="/yeni" className="btn-primary">
+                  <Link href={f === "ihale" ? "/yeni?tip=ihale" : "/yeni"} className="btn-primary">
                     Yeni kayıt
                   </Link>
                 )}

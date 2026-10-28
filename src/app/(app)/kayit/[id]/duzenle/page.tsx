@@ -28,10 +28,11 @@ export default async function EditRecordPage({ params }: { params: Promise<{ id:
             contact_ext: r.contact_ext ?? "",
             notes: r.notes ?? "",
             lines: lines.map((l) => ({
+              id: l.id,
               product_name: l.product_name,
               quantity: Number(l.quantity),
               unit: l.unit,
-              unit_price: Number(l.unit_price),
+              unit_price: l.unit_price === null ? null : Number(l.unit_price),
               currency: l.currency,
             })),
           }}

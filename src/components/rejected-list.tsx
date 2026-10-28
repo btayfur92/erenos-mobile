@@ -10,7 +10,7 @@ type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 type Row = RecordLine & { records: Pick<SalesRecord, "id" | "hospital" | "file_no" | "record_date" | "status" | "created_at"> };
 
 /**
- * Reddedilen doğrudan teminlerin kalemleri ve onaylanan teminlerde onaylanmayan kalemler:
+ * Reddedilen doğrudan temin / ihale kalemleri ve onaylananlarda onaylanmayan kalemler:
  * "hangi ürüne hangi fiyatı verdik, reddedildi" bilgisini ürün ve hastane bazında arar.
  * Ana ekrandaki "Reddedilen" sekmesinde gösterilir.
  */
@@ -18,7 +18,8 @@ export async function RejectedList({ supabase, term }: { supabase: SupabaseClien
   let query = supabase
     .from("record_lines")
     .select("*, records!inner(id, hospital, file_no, record_date, status, type, created_at)")
-    .eq("records.type", "dogrudan_temin")
+    .in("records.type", ["dogrudan_temin", "ihale_siparisi"])
+    .not("unit_price", "is", null)
     .eq("approved", false)
     .in("records.status", ["reddedildi", "onaylandi"])
     .order("created_at", { ascending: false })
@@ -32,7 +33,8 @@ export async function RejectedList({ supabase, term }: { supabase: SupabaseClien
     const { data: byHospital } = await supabase
       .from("record_lines")
       .select("*, records!inner(id, hospital, file_no, record_date, status, type, created_at)")
-      .eq("records.type", "dogrudan_temin")
+      .in("records.type", ["dogrudan_temin", "ihale_siparisi"])
+      .not("unit_price", "is", null)
       .eq("approved", false)
       .in("records.status", ["reddedildi", "onaylandi"])
       .ilike("records.hospital", `%${term}%`)
@@ -85,7 +87,7 @@ export async function RejectedList({ supabase, term }: { supabase: SupabaseClien
                       {formatQty(l.quantity)} {l.unit}
                     </span>
                   </span>
-                  <b className="shrink-0 font-semibold tabular-nums">{formatMoney(l.unit_price, l.currency)}</b>
+                  <b className="shrink-0 font-semibold tabular-nums">{formatMoney(l.unit_price ?? 0, l.currency)}</b>
                 </li>
               ))}
             </ul>

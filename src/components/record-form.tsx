@@ -8,7 +8,7 @@ import { CURRENCIES, UNITS, type RecordType } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { normalizePhone, PHONE_ERROR, phoneHint } from "@/lib/phone";
 
-type LineDraft = { key: number; product_name: string; quantity: string; unit: string; unit_price: string; currency: string };
+type LineDraft = { key: number; id?: string; product_name: string; quantity: string; unit: string; unit_price: string; currency: string };
 
 let keySeq = 1;
 const emptyLine = (currency = "TRY"): LineDraft => ({
@@ -47,14 +47,16 @@ export function RecordForm({
   const [type, setType] = useState<RecordType>(initial?.type ?? "dogrudan_temin");
   const [phoneMsg, setPhoneMsg] = useState("");
   const gs = type === "genel_siparis";
+  const tender = type === "ihale_siparisi"; // ihalede fiyat bu formda girilmez
   const [lines, setLines] = useState<LineDraft[]>(
     initial?.lines?.length
       ? initial.lines.map((l) => ({
           key: keySeq++,
+          id: l.id,
           product_name: l.product_name,
           quantity: String(l.quantity).replace(".", ","),
           unit: l.unit,
-          unit_price: String(l.unit_price).replace(".", ","),
+          unit_price: l.unit_price === null ? "" : String(l.unit_price).replace(".", ","),
           currency: l.currency,
         }))
       : [emptyLine()],
@@ -78,10 +80,11 @@ export function RecordForm({
       lines: lines
         .filter((l) => l.product_name.trim())
         .map((l) => ({
+          id: l.id,
           product_name: l.product_name.trim(),
           quantity: parseNum(l.quantity),
           unit: l.unit,
-          unit_price: parseNum(l.unit_price),
+          unit_price: tender ? null : parseNum(l.unit_price),
           currency: l.currency,
         })),
     };
@@ -96,7 +99,7 @@ export function RecordForm({
       setError(PHONE_ERROR);
       return;
     }
-    const wrong = lines.find((l) => l.product_name.trim() && (!(parseNum(l.quantity) > 0) || !(parseNum(l.unit_price) >= 0)));
+    const wrong = lines.find((l) => l.product_name.trim() && (!(parseNum(l.quantity) > 0) || (!tender && !(parseNum(l.unit_price) >= 0))));
     if (wrong) {
       const field = parseNum(wrong.quantity) > 0 ? "p" : "q";
       update(wrong.key, field === "q" ? { quantity: "" } : { unit_price: "" });
@@ -112,17 +115,18 @@ export function RecordForm({
       if (!res.ok) return setError(res.error);
       // Yeni kayıttan sonra listeye dön: doğrudan temin ve genel satış Gündem'e, yaklaşık maliyet kendi sekmesine düşer.
       if (initial?.id) router.replace(`/kayit/${res.id}`);
-      else router.replace(type === "yaklasik_maliyet" ? "/?f=ym" : "/");
+      else router.replace(type === "yaklasik_maliyet" ? "/?f=ym" : tender ? "/?f=ihale" : "/");
     });
   }
 
   return (
     <form onSubmit={onSubmit} className="space-y-5">
       {!lockedType && (
-        <div className="grid grid-cols-3 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
+        <div className="grid grid-cols-4 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
           {(
             [
               ["dogrudan_temin", "Doğrudan Temin"],
+              ["ihale_siparisi", "İhale"],
               ["genel_siparis", "Genel Satış"],
               ["yaklasik_maliyet", "Yaklaşık Maliyet"],
             ] as const
@@ -145,13 +149,13 @@ export function RecordForm({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="field-label" htmlFor="record_date">
-              {type === "dogrudan_temin" ? "Doğrudan temin tarihi" : gs ? "Sipariş tarihi" : "Tarih"}
+              {type === "dogrudan_temin" ? "Doğrudan temin tarihi" : tender ? "İhale tarihi" : gs ? "Sipariş tarihi" : "Tarih"}
             </label>
             <input id="record_date" name="record_date" type="date" required defaultValue={initial?.record_date} className="input" />
           </div>
           <div>
             <label className="field-label" htmlFor="file_no">
-              Dosya / ihale no
+              {tender ? "İhale no" : "Dosya / ihale no"}
             </label>
             <input id="file_no" name="file_no" defaultValue={initial?.file_no} className="input" placeholder="2026/123456" />
           </div>
@@ -220,7 +224,9 @@ export function RecordForm({
 
       <section>
         <div className="mb-2 flex items-center justify-between px-1">
-          <h2 className="text-[15px] font-semibold">{gs ? "Sipariş geçilen ürünler" : "Teklif verilen ürünler"}</h2>
+          <h2 className="text-[15px] font-semibold">
+            {gs ? "Sipariş geçilen ürünler" : tender ? "İhale ürünleri" : "Teklif verilen ürünler"}
+          </h2>
           <span className="text-xs text-muted">{lines.filter((l) => l.product_name.trim()).length} kalem</span>
         </div>
         <div className="space-y-3">
@@ -272,29 +278,31 @@ export function RecordForm({
                     ))}
                   </select>
                 </div>
-                <div className="grid grid-cols-[1fr_auto] gap-2">
-                  <input
-                    id={`p-${l.key}`}
-                    {...invalid(`p-${l.key}`)}
-                    value={l.unit_price}
-                    onChange={(e) => (touched(`p-${l.key}`), update(l.key, { unit_price: e.target.value }))}
-                    className="input"
-                    placeholder="Birim fiyat"
-                    inputMode="decimal"
-                    aria-label="Birim fiyat"
-                  />
-                  <select
-                    value={l.currency}
-                    onChange={(e) => update(l.key, { currency: e.target.value })}
-                    className="input w-28"
-                    aria-label="Döviz"
-                  >
-                    {CURRENCIES.map((c) => (
-                      <option key={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-                {q > 0 && p >= 0 && (
+                {!tender && (
+                  <div className="grid grid-cols-[1fr_auto] gap-2">
+                    <input
+                      id={`p-${l.key}`}
+                      {...invalid(`p-${l.key}`)}
+                      value={l.unit_price}
+                      onChange={(e) => (touched(`p-${l.key}`), update(l.key, { unit_price: e.target.value }))}
+                      className="input"
+                      placeholder="Birim fiyat"
+                      inputMode="decimal"
+                      aria-label="Birim fiyat"
+                    />
+                    <select
+                      value={l.currency}
+                      onChange={(e) => update(l.key, { currency: e.target.value })}
+                      className="input w-28"
+                      aria-label="Döviz"
+                    >
+                      {CURRENCIES.map((c) => (
+                        <option key={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {!tender && q > 0 && p >= 0 && (
                   <p className="text-right text-[13px] text-muted">
                     Tutar: <b className="font-semibold text-ink">{formatMoney(q * p, l.currency)}</b>
                   </p>
@@ -310,6 +318,11 @@ export function RecordForm({
         >
           <Plus size={18} /> Ürün ekle
         </button>
+        {tender && (
+          <p className="mt-2 px-1 text-[12px] text-muted">
+            Fiyatlar burada girilmez; ihaleden önce kaydın sayfasındaki <b>Fiyatlarımızı gir</b> ile girilir.
+          </p>
+        )}
       </section>
 
       <section className="card p-4">

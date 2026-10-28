@@ -1,23 +1,27 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowRight, FlaskConical, MessageSquareText, Pencil, Phone, Send, User } from "lucide-react";
+import { ArrowRight, BadgeCheck, FlaskConical, MessageSquareText, Pencil, Phone, Send, Tag, User } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
-import { formatDate, formatDateTime, formatMoney, formatPhone, formatQty, singleTotal } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney, formatPhone, formatQty, singleTotal, todayIstanbul } from "@/lib/format";
 import { getRates } from "@/lib/fx";
 import { telHref } from "@/lib/phone";
 import {
   RECORD_TYPE_LABEL,
+  tenderCountdown,
   type CallLog,
+  type ContractAdjustment,
   type LineProgress,
   type Profile,
   type SalesRecord,
   type SampleItem,
   type Shipment,
+  type TenderBid,
 } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge, statusLabel } from "@/components/status-badge";
-import { ProgressBar, ProgressStats } from "@/components/line-progress";
+import { ContractTimeBar, ProgressBar, ProgressStats } from "@/components/line-progress";
+import { TenderComparison } from "@/components/tender";
 import { DeleteButton, RecordActions } from "@/components/record-actions";
 import { ShipmentCard } from "@/components/shipment-card";
 
@@ -40,7 +44,18 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
   const { data: record } = await supabase.from("records").select("*, record_lines(*)").eq("id", id).single<SalesRecord>();
   if (!record) notFound();
 
-  const [{ data: calls }, { data: shipments }, { data: profiles }, progressMap, linked, rates, { data: samples }] = await Promise.all([
+  const tender = record.type === "ihale_siparisi";
+  const [
+    { data: calls },
+    { data: shipments },
+    { data: profiles },
+    progressMap,
+    linked,
+    rates,
+    { data: samples },
+    { data: bids },
+    { data: adjustments },
+  ] = await Promise.all([
     supabase.from("call_logs").select("*").eq("record_id", id).order("created_at", { ascending: false }).returns<CallLog[]>(),
     supabase
       .from("shipments")
@@ -58,7 +73,19 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
       : Promise.resolve({ data: [] as { id: string; type: string; record_date: string }[] }),
     getRates(),
     supabase.from("sample_items").select("*").eq("record_id", id).order("sort_order").returns<SampleItem[]>(),
+    tender
+      ? supabase.from("tender_bids").select("*").eq("record_id", id).order("created_at").returns<TenderBid[]>()
+      : Promise.resolve({ data: [] as TenderBid[] }),
+    tender
+      ? supabase
+          .from("contract_adjustments")
+          .select("*")
+          .eq("record_id", id)
+          .order("created_at", { ascending: false })
+          .returns<ContractAdjustment[]>()
+      : Promise.resolve({ data: [] as ContractAdjustment[] }),
   ]);
+  const today = todayIstanbul();
 
   const names = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name || p.username]));
   const progress: Record<string, LineProgress> = Object.fromEntries(progressMap);
@@ -66,7 +93,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
   const decided = record.status === "onaylandi" || record.status === "reddedildi";
   const gs = record.type === "genel_siparis";
   // Onaylanan DT ve genel satışta toplam, onaylanan miktarlar üzerinden hesaplanır.
-  const approved = record.status === "onaylandi" && (record.type === "dogrudan_temin" || gs);
+  const approved = record.status === "onaylandi" && (record.type === "dogrudan_temin" || gs || tender);
   const source = linked.data?.find((r) => r.id === record.source_record_id);
   const converted = linked.data?.find((r) => r.id === record.converted_record_id);
 
@@ -75,7 +102,15 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
       <PageHeader
         title={record.hospital}
         subtitle={RECORD_TYPE_LABEL[record.type]}
-        back={record.status === "reddedildi" ? "/?f=red" : gs && record.status === "onaylandi" ? "/?f=gs" : "/"}
+        back={
+          tender
+            ? `/?f=ihale${record.status === "onaylandi" ? "&d=onay" : record.status === "reddedildi" ? "&d=red" : ""}`
+            : record.status === "reddedildi"
+              ? "/?f=red"
+              : gs && record.status === "onaylandi"
+                ? "/?f=gs"
+                : "/"
+        }
         action={
           !decided && (
             <Link
@@ -95,13 +130,20 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
               <span className="rounded-md bg-white/15 px-1.5 py-0.5 text-[11px] font-bold tracking-wide">
                 {RECORD_TYPE_LABEL[record.type].toLocaleUpperCase("tr-TR")}
               </span>
-              <span className="text-[13px] text-white/75">{formatDate(record.record_date)}</span>
+              <span className="text-[13px] text-white/75">
+                {tender ? "İhale tarihi: " : ""}
+                {formatDate(record.record_date)}
+              </span>
             </div>
             <h2 className="mt-3 text-xl font-semibold leading-snug">{record.hospital}</h2>
             <p className="mt-0.5 text-[14px] text-white/75">
-              {record.file_no ? `Dosya / ihale no: ${record.file_no}` : "Dosya no girilmedi"}
+              {record.file_no
+                ? `${tender ? "İhale" : "Dosya / ihale"} no: ${record.file_no}`
+                : `${tender ? "İhale" : "Dosya"} no girilmedi`}
             </p>
-            <p className="mt-4 text-[13px] text-white/70">{approved ? "Onaylanan toplam" : gs ? "Sipariş toplamı" : "Toplam teklif"}</p>
+            <p className="mt-4 text-[13px] text-white/70">
+              {approved ? (tender ? "Sözleşme toplamı" : "Onaylanan toplam") : gs ? "Sipariş toplamı" : "Toplam teklif"}
+            </p>
             <p className="text-2xl font-semibold tabular-nums tracking-tight">
               {singleTotal(
                 approved ? lines.filter((l) => l.approved).map((l) => ({ ...l, quantity: Number(l.approved_qty ?? 0) })) : lines,
@@ -133,6 +175,28 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                   >
                     <Phone size={17} />
                   </a>
+                )}
+              </div>
+            )}
+            {tender && record.status !== "onaylandi" && record.status !== "reddedildi" && (
+              <div className="space-y-1.5 rounded-xl bg-canvas p-3 text-[13px]">
+                {record.status === "ihale_bekliyor" && (
+                  <p className="font-semibold text-teal-700">{tenderCountdown(record.record_date, today)}</p>
+                )}
+                <p className={`flex items-center gap-1.5 ${record.guarantee_paid_at ? "text-emerald-700" : "text-muted"}`}>
+                  <BadgeCheck size={14} />
+                  {record.guarantee_paid_at
+                    ? `Teminat yatırıldı · ${formatDateTime(record.guarantee_paid_at)}${record.guarantee_paid_by && names[record.guarantee_paid_by] ? ` · ${names[record.guarantee_paid_by]}` : ""}`
+                    : "Teminat henüz yatırılmadı"}
+                </p>
+                <p className={`flex items-center gap-1.5 ${record.prices_entered_at ? "text-emerald-700" : "text-muted"}`}>
+                  <Tag size={14} />
+                  {record.prices_entered_at
+                    ? `Fiyatlarımız girildi · ${formatDateTime(record.prices_entered_at)}`
+                    : "Fiyatlarımız henüz girilmedi"}
+                </p>
+                {record.status === "ihale_bekliyor" && (
+                  <p className="text-muted">İhaleden 3 gün önce mesai içinde 2 saatte bir, son gün saatte bir herkese hatırlatma gider.</p>
                 )}
               </div>
             )}
@@ -170,20 +234,33 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
               const rejected = decided && l.approved === false;
               // Onaylanan kalemde toplam adet artık onaylanan adettir; teklif adedi gösterilmez.
               const qty = record.status === "onaylandi" && l.approved ? Number(l.approved_qty ?? l.quantity) : Number(l.quantity);
+              // İhalede iş artışı / eksiltmesi: sözleşme miktarına göre fark.
+              const change =
+                tender && l.approved && l.contract_qty && Number(l.approved_qty) !== Number(l.contract_qty)
+                  ? Math.round(((Number(l.approved_qty) - Number(l.contract_qty)) / Number(l.contract_qty)) * 1000) / 10
+                  : 0;
               return (
                 <div key={l.id} className={`card p-4 ${rejected ? "opacity-60" : ""}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[15px] font-semibold leading-snug">{l.product_name}</p>
                       <p className="mt-0.5 text-[13px] text-muted">
-                        {formatQty(qty)} {l.unit} × {formatMoney(l.unit_price, l.currency)}
+                        {formatQty(qty)} {l.unit}
+                        {l.unit_price === null ? " · fiyat girilmedi" : ` × ${formatMoney(l.unit_price, l.currency)}`}
                       </p>
+                      {change !== 0 && (
+                        <p className={`mt-0.5 text-[12px] font-semibold ${change > 0 ? "text-emerald-700" : "text-amber-700"}`}>
+                          Sözleşme {formatQty(l.contract_qty)} {l.unit} · iş {change > 0 ? "artışı" : "eksiltmesi"} %{Math.abs(change)}
+                        </p>
+                      )}
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="text-[15px] font-semibold tabular-nums">{formatMoney(qty * Number(l.unit_price), l.currency)}</p>
+                      {l.unit_price !== null && (
+                        <p className="text-[15px] font-semibold tabular-nums">{formatMoney(qty * Number(l.unit_price), l.currency)}</p>
+                      )}
                       {approved && (
                         <span className={`text-[12px] font-semibold ${l.approved ? "text-emerald-700" : "text-accent-600"}`}>
-                          {l.approved ? "Onaylandı" : "Onaylanmadı"}
+                          {l.approved ? (tender ? "Sözleşmeli" : "Onaylandı") : tender ? "Reddedildi" : "Onaylanmadı"}
                         </span>
                       )}
                     </div>
@@ -199,6 +276,75 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
             })}
           </div>
         </Section>
+
+        {tender && record.status === "onaylandi" && record.contract_start && record.contract_end && (
+          <Section title="Sözleşme">
+            <div className="card space-y-3 p-4">
+              <div className="grid grid-cols-2 gap-2 text-[13px]">
+                <p>
+                  <span className="block text-muted">İmza</span>
+                  <b className="font-semibold">{formatDate(record.contract_start)}</b>
+                </p>
+                <p>
+                  <span className="block text-muted">Bitiş</span>
+                  <b className="font-semibold">{formatDate(record.contract_end)}</b>
+                </p>
+              </div>
+              <ContractTimeBar start={record.contract_start} end={record.contract_end} today={today} />
+              {(() => {
+                const totalQty = lines.filter((l) => l.approved).reduce((t, l) => t + Number(l.approved_qty ?? 0), 0);
+                const delivered = lines.filter((l) => l.approved).reduce((t, l) => t + Number(progress[l.id]?.delivered ?? 0), 0);
+                const inShip = lines.filter((l) => l.approved).reduce((t, l) => t + Number(progress[l.id]?.in_shipment ?? 0), 0);
+                const pct = totalQty ? Math.round((delivered / totalQty) * 100) : 0;
+                return (
+                  <div>
+                    <div className="mb-1 flex items-baseline justify-between gap-2 text-[13px]">
+                      <span className="font-medium">Ürün baremi (tüm kalemler)</span>
+                      <span className="shrink-0 tabular-nums text-muted">%{pct} teslim edildi</span>
+                    </div>
+                    <ProgressBar
+                      p={{
+                        line_id: "",
+                        record_id: record.id,
+                        approved_qty: totalQty,
+                        delivered,
+                        in_shipment: inShip,
+                        remaining: totalQty - delivered - inShip,
+                      }}
+                    />
+                  </div>
+                );
+              })()}
+              {!!adjustments?.length && (
+                <div className="border-t border-line/70 pt-3">
+                  <p className="mb-1.5 text-[12px] font-bold uppercase tracking-wider text-muted">İş artışı / eksiltmesi</p>
+                  <ul className="space-y-1 text-[13px]">
+                    {adjustments.map((a) => {
+                      const l = lines.find((x) => x.id === a.line_id);
+                      return (
+                        <li key={a.id}>
+                          <b className="font-semibold">{l?.product_name}</b>: {formatQty(a.old_qty)} → {formatQty(a.new_qty)} {l?.unit}
+                          <span className="text-muted">
+                            {" "}
+                            · {formatDateTime(a.created_at)}
+                            {a.created_by && names[a.created_by] ? ` · ${names[a.created_by]}` : ""}
+                            {a.note ? ` · ${a.note}` : ""}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </Section>
+        )}
+
+        {tender && (
+          <Section title="Fiyat karşılaştırması">
+            <TenderComparison record={record} lines={lines} bids={bids ?? []} rates={rates} />
+          </Section>
+        )}
 
         {!!shipments?.length && (
           <Section title="Sevkiyatlar">

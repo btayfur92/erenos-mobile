@@ -1,44 +1,78 @@
 import Link from "next/link";
-import { ChevronRight, Phone } from "lucide-react";
-import { formatDate, formatQty, singleTotal } from "@/lib/format";
-import { isFullyDelivered, type LineProgress, type SalesRecord } from "@/lib/types";
+import { BadgeCheck, ChevronRight, Circle, Phone, Siren } from "lucide-react";
+import { formatDate, formatQty, singleTotal, todayIstanbul } from "@/lib/format";
+import { daysUntil, isFullyDelivered, type LineProgress, type SalesRecord } from "@/lib/types";
 import { StatusBadge, TypeBadge, statusLabel } from "./status-badge";
-import { ProgressBar } from "./line-progress";
+import { ContractTimeBar, ProgressBar } from "./line-progress";
 
 export function RecordCard({
   record,
   progress,
   rates,
+  alarm = false,
 }: {
   record: SalesRecord;
   progress: Map<string, LineProgress>;
   rates: Record<string, number> | null;
+  alarm?: boolean; // ihale sözleşmesi son ayda: kırmızı çerçeve
 }) {
   const lines = [...(record.record_lines ?? [])].sort((a, b) => a.sort_order - b.sort_order);
   const approvedLines = lines.filter((l) => l.approved);
-  const isApproved = record.status === "onaylandi" && (record.type === "dogrudan_temin" || record.type === "genel_siparis");
+  const tender = record.type === "ihale_siparisi";
+  const isApproved = record.status === "onaylandi" && record.type !== "yaklasik_maliyet";
   const fullyDelivered = isFullyDelivered(record, progress);
+  const today = todayIstanbul();
+  const red = alarm && !fullyDelivered;
 
   return (
-    <Link href={`/kayit/${record.id}`} className="card block p-4 transition active:scale-[0.99]">
+    <Link href={`/kayit/${record.id}`} className={`card block p-4 transition active:scale-[0.99] ${red ? "ring-2 ring-accent-500" : ""}`}>
+      {red && record.contract_end && (
+        <p className="-mx-4 -mt-4 mb-3 flex items-center gap-1.5 rounded-t-2xl bg-accent-600 px-4 py-1.5 text-[13px] font-semibold text-white">
+          <Siren size={15} /> Sözleşme son ayında · {Math.max(daysUntil(record.contract_end, today), 0)} gün kaldı
+        </p>
+      )}
       <div className="flex items-center justify-between gap-2">
         <TypeBadge type={record.type} />
-        <span className="text-xs text-muted">{formatDate(record.record_date)}</span>
+        <span className="text-xs text-muted">
+          {tender ? "İhale: " : ""}
+          {formatDate(record.record_date)}
+        </span>
       </div>
 
       <div className="mt-2.5 flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-[16px] font-semibold leading-snug">{record.hospital}</h3>
           <p className="mt-0.5 truncate text-[13px] text-muted">
-            {record.file_no ? `Dosya no: ${record.file_no}` : "Dosya no girilmedi"}
+            {record.file_no ? `${tender ? "İhale" : "Dosya"} no: ${record.file_no}` : `${tender ? "İhale" : "Dosya"} no girilmedi`}
             {record.contact_name ? ` · ${record.contact_name}` : ""}
           </p>
         </div>
         <ChevronRight size={18} className="mt-1 shrink-0 text-muted/60" />
       </div>
 
+      {tender && record.status === "ihale_bekliyor" && (
+        <div className="mt-2.5 flex flex-wrap gap-1.5 text-[12px] font-medium">
+          {(
+            [
+              [!!record.guarantee_paid_at, "Teminat"],
+              [!!record.prices_entered_at, "Fiyatlarımız"],
+            ] as const
+          ).map(([done, label]) => (
+            <span
+              key={label}
+              className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 ${done ? "bg-emerald-50 text-emerald-700" : "bg-canvas text-muted"}`}
+            >
+              {done ? <BadgeCheck size={13} /> : <Circle size={11} />} {label}
+            </span>
+          ))}
+        </div>
+      )}
+
       {isApproved ? (
         <div className="mt-3 space-y-2.5">
+          {tender && record.contract_start && record.contract_end && (
+            <ContractTimeBar start={record.contract_start} end={record.contract_end} today={today} />
+          )}
           {approvedLines.map((l) => {
             const p = progress.get(l.id);
             if (!p) return null;
