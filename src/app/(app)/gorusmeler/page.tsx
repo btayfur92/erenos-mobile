@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { MeetingCard, MeetingEditor } from "@/components/meetings";
 import type { Meeting, Profile } from "@/lib/types";
+import { fetchCards } from "@/lib/queries";
 
 export const metadata: Metadata = { title: "Görüşmeler" };
 
@@ -22,15 +23,16 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
     .limit(300);
   if (term) query = query.or(`hospital.ilike.%${term}%,department.ilike.%${term}%,note.ilike.%${term}%`);
 
-  const [{ data: meetings }, { data: profiles }] = await Promise.all([
+  const [{ data: meetings }, { data: profiles }, { customers }] = await Promise.all([
     query.returns<Meeting[]>(),
     supabase.from("profiles").select("id, full_name, username").returns<Pick<Profile, "id" | "full_name" | "username">[]>(),
+    fetchCards(supabase),
   ]);
   const names = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name || p.username]));
 
   return (
     <>
-      <PageHeader title="Görüşmeler" subtitle="Ziyaret notları" action={<MeetingEditor />} />
+      <PageHeader title="Görüşmeler" subtitle="Ziyaret notları" action={<MeetingEditor customers={customers} />} />
       <main className="mx-auto max-w-xl px-4 pt-4">
         <form className="relative" action="">
           <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
@@ -45,7 +47,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
         </form>
         <div className="mt-4 space-y-3">
           {meetings?.length ? (
-            meetings.map((m) => <MeetingCard key={m.id} meeting={m} names={names} />)
+            meetings.map((m) => <MeetingCard key={m.id} meeting={m} names={names} customers={customers} />)
           ) : (
             <EmptyState
               icon={<NotebookPen size={26} />}

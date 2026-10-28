@@ -3,11 +3,15 @@ import { requireUser } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { RecordForm } from "@/components/record-form";
 import type { SalesRecord } from "@/lib/types";
+import { fetchCards } from "@/lib/queries";
 
 export default async function EditRecordPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { supabase } = await requireUser();
-  const { data: r } = await supabase.from("records").select("*, record_lines(*)").eq("id", id).single<SalesRecord>();
+  const [{ data: r }, { customers, products }] = await Promise.all([
+    supabase.from("records").select("*, record_lines(*)").eq("id", id).single<SalesRecord>(),
+    fetchCards(supabase),
+  ]);
   if (!r) notFound();
   const lines = [...(r.record_lines ?? [])].sort((a, b) => a.sort_order - b.sort_order);
 
@@ -16,6 +20,8 @@ export default async function EditRecordPage({ params }: { params: Promise<{ id:
       <PageHeader title="Kaydı düzenle" subtitle={r.hospital} back={`/kayit/${id}`} />
       <main className="mx-auto max-w-xl px-4 pt-4">
         <RecordForm
+          customers={customers}
+          products={products}
           lockedType
           lockedLines={r.status === "onaylandi" || r.status === "reddedildi"}
           initial={{

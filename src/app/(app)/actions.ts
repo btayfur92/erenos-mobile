@@ -4,7 +4,16 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { sendToAll, type PushPayload } from "@/lib/push";
-import { isTenderType, RECORD_TYPE_LABEL, REMINDER_INTERVALS, type ManualDirection, type RecordType } from "@/lib/types";
+import {
+  isTenderType,
+  RECORD_TYPE_LABEL,
+  REMINDER_INTERVALS,
+  UNITS,
+  type Customer,
+  type ManualDirection,
+  type Product,
+  type RecordType,
+} from "@/lib/types";
 import { formatQty } from "@/lib/format";
 import { normalizePhone, PHONE_ERROR } from "@/lib/phone";
 
@@ -641,6 +650,85 @@ export async function setExtendedHours(on: boolean): Promise<ActionResult> {
   const { supabase } = await requireUser();
   const { error } = await supabase.rpc("set_extended_hours", { p_on: on });
   if (error) return fail(error);
+  refresh();
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Kartlar: hastane/müşteri ve ürün
+// ---------------------------------------------------------------------------
+
+export type CardResult<T> = { ok: true; card: T } | { ok: false; error: string };
+
+/** Benzersiz ad ve kullanımdaki kartın silinmesi hatalarını anlaşılır yazar. */
+function cardFail(error: { code?: string; message?: string }, what: string) {
+  if (error.code === "23505") return { ok: false as const, error: `Bu adla bir ${what} kartı zaten var.` };
+  if (error.code === "23503") return { ok: false as const, error: `Bu ${what} kayıtlarda kullanıldığı için silinemez.` };
+  return { ok: false as const, error: error.message ?? "Beklenmeyen bir hata oluştu." };
+}
+
+export interface CustomerInput {
+  id?: string;
+  name: string;
+  city: string;
+  district: string;
+  contact_name: string;
+  contact_phone: string;
+}
+
+export async function saveCustomer(input: CustomerInput): Promise<CardResult<Customer>> {
+  const { supabase } = await requireUser();
+  const name = input.name.trim().replace(/\s+/g, " ");
+  if (!name) return { ok: false, error: "Hastane / müşteri adı gerekli." };
+  const phone = input.contact_phone.trim() ? normalizePhone(input.contact_phone) : "";
+  if (phone === null) return { ok: false, error: PHONE_ERROR };
+  const fields = {
+    name,
+    city: input.city.trim() || null,
+    district: input.district.trim() || null,
+    contact_name: input.contact_name.trim() || null,
+    contact_phone: phone || null,
+  };
+  const cols = "id, name, city, district, contact_name, contact_phone";
+  const { data, error } = input.id
+    ? await supabase.from("customers").update(fields).eq("id", input.id).select(cols).single<Customer>()
+    : await supabase.from("customers").insert(fields).select(cols).single<Customer>();
+  if (error) return cardFail(error, "hastane / müşteri");
+  refresh();
+  return { ok: true, card: data };
+}
+
+export async function deleteCustomer(id: string): Promise<ActionResult> {
+  const { supabase } = await requireUser();
+  const { error } = await supabase.from("customers").delete().eq("id", id);
+  if (error) return cardFail(error, "hastane / müşteri");
+  refresh();
+  return { ok: true };
+}
+
+export interface ProductInput {
+  id?: string;
+  name: string;
+  unit: string;
+}
+
+export async function saveProduct(input: ProductInput): Promise<CardResult<Product>> {
+  const { supabase } = await requireUser();
+  const name = input.name.trim().replace(/\s+/g, " ");
+  if (!name) return { ok: false, error: "Ürün adı gerekli." };
+  const fields = { name, unit: (UNITS as readonly string[]).includes(input.unit) ? input.unit : "Adet" };
+  const { data, error } = input.id
+    ? await supabase.from("products").update(fields).eq("id", input.id).select("id, name, unit").single<Product>()
+    : await supabase.from("products").insert(fields).select("id, name, unit").single<Product>();
+  if (error) return cardFail(error, "ürün");
+  refresh();
+  return { ok: true, card: data };
+}
+
+export async function deleteProduct(id: string): Promise<ActionResult> {
+  const { supabase } = await requireUser();
+  const { error } = await supabase.from("products").delete().eq("id", id);
+  if (error) return cardFail(error, "ürün");
   refresh();
   return { ok: true };
 }

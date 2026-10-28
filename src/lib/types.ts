@@ -23,7 +23,8 @@ export interface RecordLine {
   id: string;
   record_id: string;
   sort_order: number;
-  product_name: string;
+  product_name: string; // ürün kartının adı
+  product_id: string | null;
   quantity: number;
   unit: string;
   unit_price: number | null; // ihalede fiyat sonradan girilir
@@ -40,7 +41,8 @@ export interface SalesRecord {
   status: RecordStatus;
   record_date: string;
   file_no: string | null;
-  hospital: string;
+  hospital: string; // hastane/müşteri kartının adı
+  customer_id: string | null;
   contact_name: string | null;
   contact_phone: string | null;
   contact_ext: string | null;
@@ -171,10 +173,31 @@ export interface ManualDelivery {
 }
 
 /** Hastane ziyaretinde alınan görüşme notu. */
+/** Hastane / müşteri kartı. Yalnızca ad zorunlu. */
+export interface Customer {
+  id: string;
+  name: string;
+  city: string | null;
+  district: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+}
+
+/** Ürün kartı; kalemde seçilince birimi gelir. */
+export interface Product {
+  id: string;
+  name: string;
+  unit: string;
+}
+
+/** Kart adlarını Türkçe büyük/küçük harf farkı gözetmeden karşılaştırmak için. */
+export const cardKey = (name: string) => name.trim().toLocaleLowerCase("tr-TR");
+
 export interface Meeting {
   id: string;
   meeting_date: string;
   hospital: string;
+  customer_id: string | null;
   department: string;
   note: string;
   created_by: string | null;
@@ -394,3 +417,6 @@ export const REMINDER_INTERVALS: { minutes: number; label: string }[] = [
 ];
 
 export const intervalLabel = (minutes: number) => REMINDER_INTERVALS.find((i) => i.minutes === minutes)?.label ?? `${minutes} dakikada bir`;
+
+/** Hastane / müşteri kartındaki il önerileri (81 il, Türkçe alfabetik). */
+export const PROVINCES = [...DMO_CITIES.filter((c) => !c.startsWith("İstanbul ")), "İstanbul"].sort((a, b) => a.localeCompare(b, "tr"));

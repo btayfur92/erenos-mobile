@@ -1,5 +1,5 @@
 -- Erenos Mobile — ilk şema
--- Satış kayıtları (Yaklaşık Maliyet, Doğrudan Temin, İhale, Genel Satış), ürün kalemleri,
+-- Hastane/müşteri ve ürün kartları, satış kayıtları (Yaklaşık Maliyet, Doğrudan Temin, İhale, DMO İhalesi, Genel Satış), ürün kalemleri,
 -- arama notları, sevkiyatlar, push abonelikleri ve kullanıcı profilleri.
 
 create extension if not exists pgcrypto;
@@ -97,6 +97,36 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Kartlar: hastane/müşteri ve ürün. Kayıt, kalem ve görüşmelerde ad bu kartlardan seçilir;
+-- kartı olmayan ad kaydedilemez. Kart adı değişince bağlı kayıtlardaki ad da güncellenir.
+-- ---------------------------------------------------------------------------
+
+create table public.customers (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (length(trim(name)) > 0),
+  city text,                              -- il (isteğe bağlı)
+  district text,                          -- ilçe (isteğe bağlı)
+  contact_name text,                      -- ilgili kişi (isteğe bağlı)
+  contact_phone text,                     -- iletişim numarası (isteğe bağlı)
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index customers_name_key on public.customers (lower(trim(name)));
+
+create table public.products (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (length(trim(name)) > 0),
+  unit text not null default 'Adet',      -- kalemde seçilince gelen birim
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index products_name_key on public.products (lower(trim(name)));
+
+-- ---------------------------------------------------------------------------
 -- Satış kayıtları
 -- ---------------------------------------------------------------------------
 
@@ -106,7 +136,8 @@ create table public.records (
   status public.record_status not null,
   record_date date not null default current_date,
   file_no text,                 -- Dosya / ihale numarası
-  hospital text not null,
+  hospital text not null,                 -- kart adı (customer_id ile eşlenir)
+  customer_id uuid references public.customers (id) on delete restrict,
   contact_name text,
   contact_phone text,
   contact_ext text,                       -- sabit hatta dahili numara
@@ -141,13 +172,15 @@ create table public.records (
 );
 
 create index records_date_idx on public.records (record_date desc, created_at desc);
+create index records_customer_idx on public.records (customer_id, record_date desc);
 create index records_status_idx on public.records (type, status);
 
 create table public.record_lines (
   id uuid primary key default gen_random_uuid(),
   record_id uuid not null references public.records (id) on delete cascade,
   sort_order int not null default 0,
-  product_name text not null,
+  product_name text not null,             -- kart adı (product_id ile eşlenir)
+  product_id uuid references public.products (id) on delete restrict,
   quantity numeric(14, 2) not null check (quantity > 0),
   unit text not null default 'Adet',
   unit_price numeric(14, 4) check (unit_price is null or unit_price >= 0),  -- ihalede fiyat sonradan girilir
@@ -160,6 +193,7 @@ create table public.record_lines (
 );
 
 create index record_lines_record_idx on public.record_lines (record_id, sort_order);
+create index record_lines_product_idx on public.record_lines (product_id);
 
 create table public.call_logs (
   id uuid primary key default gen_random_uuid(),
@@ -278,6 +312,7 @@ create table public.meetings (
   id uuid primary key default gen_random_uuid(),
   meeting_date date not null,
   hospital text not null check (length(trim(hospital)) > 0),
+  customer_id uuid references public.customers (id) on delete restrict,
   department text not null check (length(trim(department)) > 0),
   note text not null check (length(trim(note)) > 0),
   created_by uuid references public.profiles (id) on delete set null default auth.uid(),
@@ -287,6 +322,7 @@ create table public.meetings (
 );
 
 create index meetings_date_idx on public.meetings (meeting_date desc, created_at desc);
+create index meetings_customer_idx on public.meetings (customer_id, meeting_date desc);
 
 create table public.push_subscriptions (
   id uuid primary key default gen_random_uuid(),
@@ -309,6 +345,80 @@ $$;
 
 create trigger records_touch before update on public.records
   for each row execute function public.touch_updated_at();
+create trigger customers_touch before update on public.customers
+  for each row execute function public.touch_updated_at();
+create trigger products_touch before update on public.products
+  for each row execute function public.touch_updated_at();
+
+-- Kayıt ve görüşmedeki hastane/müşteri adı kartla eşlenir (büyük/küçük harf fark etmez); kartı yoksa kaydedilmez.
+create or replace function public.link_customer()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_id uuid;
+  v_name text;
+begin
+  select id, name into v_id, v_name from customers where lower(trim(name)) = lower(trim(new.hospital));
+  if v_id is null then
+    raise exception 'Hastane / müşteri kartı bulunamadı: %. Önce kartını ekleyin.', trim(new.hospital);
+  end if;
+  new.customer_id := v_id;
+  new.hospital := v_name;
+  return new;
+end;
+$$;
+
+create trigger records_link_customer before insert or update of hospital on public.records
+  for each row execute function public.link_customer();
+create trigger meetings_link_customer before insert or update of hospital on public.meetings
+  for each row execute function public.link_customer();
+
+-- Kalemdeki ürün adı ürün kartıyla eşlenir; kartı yoksa kaydedilmez.
+create or replace function public.link_product()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_id uuid;
+  v_name text;
+begin
+  select id, name into v_id, v_name from products where lower(trim(name)) = lower(trim(new.product_name));
+  if v_id is null then
+    raise exception 'Ürün kartı bulunamadı: %. Önce kartını ekleyin.', trim(new.product_name);
+  end if;
+  new.product_id := v_id;
+  new.product_name := v_name;
+  return new;
+end;
+$$;
+
+create trigger record_lines_link_product before insert or update of product_name on public.record_lines
+  for each row execute function public.link_product();
+
+-- Kart adı değişince bağlı kayıt, görüşme ve kalemlerdeki ad da değişir.
+create or replace function public.sync_card_name()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if tg_table_name = 'customers' then
+    update records set hospital = new.name where customer_id = new.id;
+    update meetings set hospital = new.name where customer_id = new.id;
+  else
+    update record_lines set product_name = new.name where product_id = new.id;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger customers_sync_name after update of name on public.customers
+  for each row when (old.name is distinct from new.name) execute function public.sync_card_name();
+create trigger products_sync_name after update of name on public.products
+  for each row when (old.name is distinct from new.name) execute function public.sync_card_name();
 
 -- ---------------------------------------------------------------------------
 -- Kalem bazında ilerleme: toplam (onaylanan) / sevkte / teslim / kalan
@@ -897,6 +1007,8 @@ $$;
 
 alter table public.profiles enable row level security;
 alter table public.records enable row level security;
+alter table public.customers enable row level security;
+alter table public.products enable row level security;
 alter table public.record_lines enable row level security;
 alter table public.call_logs enable row level security;
 alter table public.sample_items enable row level security;
@@ -915,6 +1027,10 @@ create policy "profiles_admin_write" on public.profiles
   for update to authenticated using (public.is_admin()) with check (public.is_admin());
 
 create policy "records_all" on public.records
+  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+create policy "customers_all" on public.customers
+  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+create policy "products_all" on public.products
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 create policy "record_lines_all" on public.record_lines
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());

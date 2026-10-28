@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ChevronRight, LogOut, Users } from "lucide-react";
+import { Building2, ChevronRight, LogOut, Package, Users } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { logout } from "@/app/login/actions";
 import { PageHeader } from "@/components/page-header";
@@ -33,6 +33,26 @@ export default async function SettingsPage() {
               {profile.is_admin ? " · Yönetici" : ""}
             </p>
           </div>
+        </div>
+
+        <div className="card divide-y divide-line/70">
+          {(
+            [
+              ["/ayarlar/hastaneler", Building2, "Hastaneler / Müşteriler", "Hastane ve müşteri kartları"],
+              ["/ayarlar/urunler", Package, "Ürünler", "Ürün kartları"],
+            ] as const
+          ).map(([href, Icon, title, text]) => (
+            <Link key={href} href={href} className="flex items-center gap-3 p-4">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600">
+                <Icon size={20} />
+              </span>
+              <span className="flex-1">
+                <b className="block text-[15px] font-semibold">{title}</b>
+                <span className="text-[13px] text-muted">{text}</span>
+              </span>
+              <ChevronRight size={18} className="text-muted/60" />
+            </Link>
+          ))}
         </div>
 
         <div className="card">

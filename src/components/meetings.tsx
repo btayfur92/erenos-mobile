@@ -5,9 +5,10 @@ import { Building2, Loader2, Pencil, Plus } from "lucide-react";
 import { Sheet } from "@/components/sheet";
 import { saveMeeting } from "@/app/(app)/actions";
 import { formatDateTime, formatDateWithDay, todayIstanbul } from "@/lib/format";
-import type { Meeting } from "@/lib/types";
+import type { Customer, Meeting } from "@/lib/types";
+import { CustomerPicker, hasCard, withCard } from "@/components/cards";
 
-export function MeetingCard({ meeting: m, names }: { meeting: Meeting; names: Record<string, string> }) {
+export function MeetingCard({ meeting: m, names, customers }: { meeting: Meeting; names: Record<string, string>; customers: Customer[] }) {
   const [editing, setEditing] = useState(false);
   return (
     <div className="card p-4">
@@ -35,25 +36,34 @@ export function MeetingCard({ meeting: m, names }: { meeting: Meeting; names: Re
           ? ` · düzenlendi ${formatDateTime(m.updated_at)}${m.updated_by && names[m.updated_by] ? ` (${names[m.updated_by]})` : ""}`
           : ""}
       </p>
-      {editing && <MeetingSheet meeting={m} onClose={() => setEditing(false)} />}
+      {editing && <MeetingSheet meeting={m} customers={customers} onClose={() => setEditing(false)} />}
     </div>
   );
 }
 
 /** Başlıktaki "Not ekle" düğmesi. */
-export function MeetingEditor() {
+export function MeetingEditor({ customers }: { customers: Customer[] }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <button onClick={() => setOpen(true)} className="btn-primary h-10 gap-1.5 px-3 py-0 text-[14px]">
         <Plus size={18} /> Not ekle
       </button>
-      {open && <MeetingSheet onClose={() => setOpen(false)} />}
+      {open && <MeetingSheet customers={customers} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-function MeetingSheet({ meeting, onClose }: { meeting?: Meeting; onClose: () => void }) {
+function MeetingSheet({
+  meeting,
+  customers: initialCustomers,
+  onClose,
+}: {
+  meeting?: Meeting;
+  customers: Customer[];
+  onClose: () => void;
+}) {
+  const [customers, setCustomers] = useState(initialCustomers);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [form, setForm] = useState({
@@ -67,6 +77,12 @@ function MeetingSheet({ meeting, onClose }: { meeting?: Meeting; onClose: () => 
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!hasCard(customers, form.hospital))
+      return setError(
+        form.hospital.trim()
+          ? `“${form.hospital.trim()}” için kart yok. Listeden seçin ya da “yeni kart aç” ile ekleyin.`
+          : "Hastane seçin.",
+      );
     start(async () => {
       const r = await saveMeeting({ ...form, id: meeting?.id });
       if (!r.ok) return setError(r.error);
@@ -87,7 +103,14 @@ function MeetingSheet({ meeting, onClose }: { meeting?: Meeting; onClose: () => 
           <label className="field-label" htmlFor="m_hospital">
             Hastane
           </label>
-          <input id="m_hospital" value={form.hospital} onChange={set("hospital")} className="input" placeholder="Hastane adı" required />
+          <CustomerPicker
+            id="m_hospital"
+            value={form.hospital}
+            customers={customers}
+            placeholder="Hastane seçin"
+            onCreated={(c) => setCustomers((cs) => withCard(cs, c))}
+            onChange={(name) => setForm((f) => ({ ...f, hospital: name }))}
+          />
         </div>
         <div>
           <label className="field-label" htmlFor="m_department">

@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { saveRecord, type LineInput, type RecordInput } from "@/app/(app)/actions";
-import { CURRENCIES, DMO_CITIES, isTenderType, UNITS, type RecordType } from "@/lib/types";
+import { CURRENCIES, DMO_CITIES, isTenderType, UNITS, type Customer, type Product, type RecordType } from "@/lib/types";
+import { CustomerPicker, hasCard, ProductPicker, withCard } from "@/components/cards";
 import { formatMoney } from "@/lib/format";
 import { normalizePhone, PHONE_ERROR, phoneHint } from "@/lib/phone";
 
@@ -42,8 +43,13 @@ export function RecordForm({
   initial,
   lockedType,
   lockedLines,
+  customers: initialCustomers,
+  products: initialProducts,
 }: {
   initial?: Partial<Omit<RecordInput, "lines">> & { lines?: LineInput[] };
+  /** Seçmeli alanlar için kartlar; formdan eklenen kart listeye katılır. */
+  customers: Customer[];
+  products: Product[];
   lockedType?: boolean;
   /** Sonuçlanmış ihale: kalem eklenip silinemez, miktar değişmez (sonuç adımından değişir); ad, birim, şehir düzeltilebilir. */
   lockedLines?: boolean;
@@ -58,6 +64,9 @@ export function RecordForm({
     if (bad === k) setBad(undefined);
   };
   const [type, setType] = useState<RecordType>(initial?.type ?? "dogrudan_temin");
+  const [customers, setCustomers] = useState(initialCustomers);
+  const [products, setProducts] = useState(initialProducts);
+  const [hospital, setHospital] = useState(initial?.hospital ?? "");
   const [phoneMsg, setPhoneMsg] = useState("");
   const gs = type === "genel_siparis";
   const tender = isTenderType(type); // ihale ve DMO ihalesinde fiyat bu formda girilmez
@@ -88,7 +97,7 @@ export function RecordForm({
       record_date: String(fd.get("record_date")),
       tender_time: tender ? String(fd.get("tender_time") ?? "") : undefined,
       file_no: String(fd.get("file_no") ?? ""),
-      hospital: String(fd.get("hospital") ?? ""),
+      hospital,
       contact_name: String(fd.get("contact_name") ?? ""),
       contact_phone: String(fd.get("contact_phone") ?? ""),
       contact_ext: String(fd.get("contact_ext") ?? ""),
@@ -105,6 +114,26 @@ export function RecordForm({
           region: dmo ? l.region.trim() : undefined,
         })),
     };
+    // Hastane/müşteri ve ürünler kartlardan seçilir; kartı olmayan ad için "yeni kart aç" kullanılır.
+    if (!hasCard(customers, hospital)) {
+      setBad("hospital");
+      document.getElementById("hospital")?.focus();
+      setError(
+        hospital.trim()
+          ? `“${hospital.trim()}” için kart yok. Listeden seçin ya da “yeni kart aç” ile ekleyin.`
+          : gs
+            ? "Müşteri seçin."
+            : "Hastane seçin.",
+      );
+      return;
+    }
+    const noCard = lines.find((l) => l.product_name.trim() && !hasCard(products, l.product_name));
+    if (noCard) {
+      setBad(`n-${noCard.key}`);
+      document.getElementById(`n-${noCard.key}`)?.focus();
+      setError(`“${noCard.product_name.trim()}” için ürün kartı yok. Listeden seçin ya da “yeni kart aç” ile ekleyin.`);
+      return;
+    }
     if (input.contact_phone.trim() && !normalizePhone(input.contact_phone)) {
       const el = document.getElementById("contact_phone") as HTMLInputElement | null;
       if (el) {
@@ -203,15 +232,28 @@ export function RecordForm({
         </div>
         <div>
           <label className="field-label" htmlFor="hospital">
-            {gs ? "Müşteri adı" : "Hastane"}
+            {gs ? "Müşteri" : "Hastane"}
           </label>
-          <input
+          <CustomerPicker
             id="hospital"
-            name="hospital"
-            required
-            defaultValue={initial?.hospital}
-            className="input"
-            placeholder={gs ? "Müşteri adı" : "Hastane adı"}
+            value={hospital}
+            customers={customers}
+            invalid={bad === "hospital"}
+            placeholder={gs ? "Müşteri seçin" : "Hastane seçin"}
+            onCreated={(c) => setCustomers((cs) => withCard(cs, c))}
+            onChange={(name, card) => {
+              touched("hospital");
+              setHospital(name);
+              // Kartta ilgili kişi / telefon varsa ve formda boşsa doldurulur.
+              const fill = (fieldId: string, v: string | null) => {
+                const el = document.getElementById(fieldId) as HTMLInputElement | null;
+                if (el && v && !el.value.trim()) el.value = v;
+              };
+              if (card) {
+                fill("contact_name", card.contact_name);
+                fill("contact_phone", card.contact_phone);
+              }
+            }}
           />
         </div>
         <div>
@@ -289,13 +331,16 @@ export function RecordForm({
                     </button>
                   )}
                 </div>
-                <input
+                <ProductPicker
+                  id={`n-${l.key}`}
                   value={l.product_name}
-                  onChange={(e) => update(l.key, { product_name: e.target.value })}
-                  className="input"
-                  placeholder="Ürün adı"
-                  aria-label="Ürün adı"
-                  required={i === 0}
+                  products={products}
+                  invalid={bad === `n-${l.key}`}
+                  onCreated={(p) => setProducts((ps) => withCard(ps, p))}
+                  onChange={(name, card) => (
+                    touched(`n-${l.key}`),
+                    update(l.key, card ? { product_name: name, unit: card.unit } : { product_name: name })
+                  )}
                 />
                 <div className="grid grid-cols-[1fr_auto] gap-2">
                   <input

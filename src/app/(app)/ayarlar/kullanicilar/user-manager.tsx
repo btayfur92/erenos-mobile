@@ -72,7 +72,9 @@ function useRun() {
 function Result({ r }: { r?: UserActionResult }) {
   if (!r) return null;
   return r.ok ? (
-    r.message ? <p className="rounded-xl bg-emerald-50 px-3.5 py-2.5 text-sm font-medium text-emerald-700">{r.message}</p> : null
+    r.message ? (
+      <p className="rounded-xl bg-emerald-50 px-3.5 py-2.5 text-sm font-medium text-emerald-700">{r.message}</p>
+    ) : null
   ) : (
     <p className="rounded-xl bg-accent-50 px-3.5 py-2.5 text-sm font-medium text-accent-700">{r.error}</p>
   );
@@ -130,14 +132,24 @@ function AddUserSheet({ open, onClose }: { open: boolean; onClose: () => void })
           <div>
             <label className="field-label">Şifre</label>
             <div className="flex gap-2">
-              <input className="input font-mono" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+              <input
+                className="input font-mono"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                required
+              />
               <button type="button" className="btn-secondary px-3" onClick={() => setForm({ ...form, password: randomPassword() })}>
                 Üret
               </button>
             </div>
           </div>
           <label className="flex items-center gap-3 rounded-xl bg-canvas p-3.5 text-sm">
-            <input type="checkbox" checked={form.is_admin} onChange={(e) => setForm({ ...form, is_admin: e.target.checked })} className="h-5 w-5 accent-brand-600" />
+            <input
+              type="checkbox"
+              checked={form.is_admin}
+              onChange={(e) => setForm({ ...form, is_admin: e.target.checked })}
+              className="h-5 w-5 accent-brand-600"
+            />
             <span>
               <b className="block font-semibold">Yönetici</b>
               <span className="text-muted">Kullanıcı ekleyip yönetebilir.</span>
@@ -190,7 +202,12 @@ function EditUserSheet({ user, self, onClose }: { user: Profile; self: boolean; 
         <div>
           <label className="field-label">Yeni şifre</label>
           <div className="flex gap-2">
-            <input className="input font-mono" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="En az 6 karakter" />
+            <input
+              className="input font-mono"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="En az 6 karakter"
+            />
             <button type="button" className="btn-secondary px-3" onClick={() => setPassword(randomPassword())}>
               Üret
             </button>
@@ -220,7 +237,11 @@ function EditUserSheet({ user, self, onClose }: { user: Profile; self: boolean; 
         </div>
         {!self && (
           <div className="grid grid-cols-2 gap-2">
-            <button className="btn-secondary" disabled={pending} onClick={() => run(() => updateUser(user.id, { is_admin: !user.is_admin }), onClose)}>
+            <button
+              className="btn-secondary"
+              disabled={pending}
+              onClick={() => run(() => updateUser(user.id, { is_admin: !user.is_admin }), onClose)}
+            >
               <ShieldCheck size={17} /> {user.is_admin ? "Yöneticiliği kaldır" : "Yönetici yap"}
             </button>
             <button

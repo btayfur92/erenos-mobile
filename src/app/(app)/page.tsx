@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlarmClock, CheckCircle2, Clock, FileSignature, FileText, Gavel, Search, XCircle } from "lucide-react";
+import { AlarmClock, ChartColumn, CheckCircle2, Clock, FileSignature, FileText, Gavel, Search, XCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
 import { getRates } from "@/lib/fx";
@@ -118,20 +118,29 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         title="Satış Takibi"
         subtitle={`Merhaba ${firstName}`}
         action={
-          <Link
-            href="/animsaticilar"
-            className={`relative grid h-10 w-10 place-items-center rounded-xl shadow-sm transition active:scale-95 ${
-              myReminders ? "bg-brand-600 text-white shadow-brand-600/30" : "bg-brand-50 text-brand-600 ring-1 ring-brand-100"
-            }`}
-            aria-label={myReminders ? `Anımsatıcılar, ${myReminders} bekleyen` : "Anımsatıcılar"}
-          >
-            <AlarmClock size={21} />
-            {!!myReminders && (
-              <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-accent-600 px-1 text-[11px] font-bold text-white ring-2 ring-white">
-                {myReminders}
-              </span>
-            )}
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/raporlar"
+              className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600 shadow-sm ring-1 ring-brand-100 transition active:scale-95"
+              aria-label="Raporlar"
+            >
+              <ChartColumn size={21} />
+            </Link>
+            <Link
+              href="/animsaticilar"
+              className={`relative grid h-10 w-10 place-items-center rounded-xl shadow-sm transition active:scale-95 ${
+                myReminders ? "bg-brand-600 text-white shadow-brand-600/30" : "bg-brand-50 text-brand-600 ring-1 ring-brand-100"
+              }`}
+              aria-label={myReminders ? `Anımsatıcılar, ${myReminders} bekleyen` : "Anımsatıcılar"}
+            >
+              <AlarmClock size={21} />
+              {!!myReminders && (
+                <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-accent-600 px-1 text-[11px] font-bold text-white ring-2 ring-white">
+                  {myReminders}
+                </span>
+              )}
+            </Link>
+          </div>
         }
       />
       <main className="mx-auto max-w-xl px-4 pt-4">
