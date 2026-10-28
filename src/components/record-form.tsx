@@ -179,7 +179,7 @@ export function RecordForm({
           {(
             [
               ["dogrudan_temin", "Doğrudan Temin"],
-              ["ihale_siparisi", "İhale"],
+              ["ihale_siparisi", "Hastane İhalesi"],
               ["dmo_ihalesi", "DMO İhalesi"],
               ["genel_siparis", "Genel Satış"],
               ["yaklasik_maliyet", "Yaklaşık Maliyet"],

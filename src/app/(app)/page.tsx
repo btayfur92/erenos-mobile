@@ -8,12 +8,12 @@ import { RecordCard } from "@/components/record-card";
 import { EmptyState } from "@/components/empty-state";
 import { ChipStrip } from "@/components/chip-strip";
 import { RejectedList } from "@/components/rejected-list";
-import { inLastMonth, isFullyDelivered, type SalesRecord } from "@/lib/types";
+import { inLastMonth, isFullyDelivered, isTenderType, tenderAt, type SalesRecord } from "@/lib/types";
 import { todayIstanbul } from "@/lib/format";
 
 const FILTERS = [
   { key: "gundem", label: "Gündemdekiler" },
-  { key: "ihale", label: "İhale" },
+  { key: "ihale", label: "Hastane İhalesi" },
   { key: "dt", label: "Doğrudan Temin" },
   { key: "dmo", label: "DMO İhalesi" },
   { key: "gs", label: "Genel Satış" },
@@ -27,12 +27,11 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // Doğrudan Temin sekmesi sonuçlanmış kayıtları Onaylanan / Reddedilen olarak ayırır.
   // Yaklaşık maliyetler Gündem'e girmez; kendi sekmesinde Bekleyen / Onaylanan / Reddedilen olarak durur.
   // Genel satış onaylanana kadar Gündem'de, sonra Genel Satış sekmesinde (teslimatı sürenler üstte).
-  // İhale sekmesi: Süreçte (ihale öncesi / numune) · Sözleşmeli · Reddedilen. DMO İhalesi: Süreçte · Siparişli · Reddedilen.
+  // Hastane İhalesi ve DMO İhalesi: ihale tarihi/saati geçene kadar Gündem'de; sonuçlanmamışlar (ihale öncesi ve sonrası) Süreçte'de;
+  // sonuç girilince Sözleşmeli / Siparişli ya da Reddedilen'de. Reddedilen bölümü bize kalmayan ürünleri kalem bazında gösterir.
   const tf = f === "ihale" || f === "dmo";
   const d = dParam ?? (f === "ym" ? "bekle" : tf ? "surec" : "onay");
   const today = todayIstanbul();
-  const monthAhead = new Date(Date.parse(today) + 30 * 86_400_000).toISOString().slice(0, 10);
-  const weekAhead = new Date(Date.parse(today) + 7 * 86_400_000).toISOString().slice(0, 10);
   const resolved = d === "red" ? "reddedildi" : d === "bekle" && f === "ym" ? "acik" : "onaylandi";
   const { supabase, user, profile } = await requireUser();
 
@@ -44,14 +43,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     .order("created_at", { ascending: false })
     .limit(300);
 
-  // Gündem: henüz sonuçlanmamış doğrudan teminler ve ihaleler, onay bekleyen genel satışlar (DT hiç "acik" olmaz, GS hiç aranmaz)
-  // ve sözleşmesinin son ayına girmiş ihaleler ile teslim süresinin son 7 gününe girmiş DMO siparişleri (kırmızı çerçeveli).
+  // Gündem: henüz sonuçlanmamış doğrudan teminler, onay bekleyen genel satışlar (DT hiç "acik" olmaz, GS hiç aranmaz)
+  // ve ihale tarihi/saati henüz gelmemiş ihaleler (saat kontrolü aşağıda). Sözleşmeli / siparişli ihaleler Gündem'e girmez.
   if (f === "gundem")
-    query = query
-      .in("type", ["dogrudan_temin", "genel_siparis", "ihale_siparisi", "dmo_ihalesi"])
-      .or(
-        `status.in.(arama_bekliyor,arandi,numune_istendi,numune_gonderildi,acik,ihale_bekliyor),and(type.eq.ihale_siparisi,status.eq.onaylandi,contract_end.lte.${monthAhead}),and(type.eq.dmo_ihalesi,status.eq.onaylandi,contract_end.lte.${weekAhead})`,
-      );
+    query = query.or(
+      `and(type.in.(dogrudan_temin,genel_siparis),status.in.(arama_bekliyor,arandi,numune_istendi,numune_gonderildi,acik)),and(type.in.(ihale_siparisi,dmo_ihalesi),status.in.(ihale_bekliyor,numune_istendi,numune_gonderildi),record_date.gte.${today})`,
+    );
   if (tf) {
     query = query.eq("type", f === "dmo" ? "dmo_ihalesi" : "ihale_siparisi");
     query =
@@ -77,7 +74,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   // "Reddedilen" sekmesi kayıt yerine fiyat arşivini (RejectedList) gösterir.
   const [{ data: records }, { count: waitingCount }] = await Promise.all([
-    f === "red" ? Promise.resolve({ data: [] as SalesRecord[] }) : query.returns<SalesRecord[]>(),
+    f === "red" || (tf && d === "red") ? Promise.resolve({ data: [] as SalesRecord[] }) : query.returns<SalesRecord[]>(),
     supabase.from("records").select("id", { count: "exact", head: true }).eq("status", "arama_bekliyor"),
   ]);
   const [progress, rates] = await Promise.all([
@@ -100,8 +97,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         Number(isFullyDelivered(a, progress)) - Number(isFullyDelivered(b, progress)) ||
         (a.contract_end ?? "").localeCompare(b.contract_end ?? ""),
     );
-  // Gündem'de son aya girmiş ama tamamı teslim edilmiş sözleşme gösterilmez.
-  if (f === "gundem") list = list.filter((r) => !(r.status === "onaylandi" && isFullyDelivered(r, progress)));
+  // Gündem'de ihale saati geçmiş ihaleler gösterilmez (Süreçte'de kalır).
+  const now = Date.now();
+  if (f === "gundem") list = list.filter((r) => !isTenderType(r.type) || tenderAt(r.record_date, r.tender_time) > now);
 
   const firstName = (profile.full_name || profile.username).split(" ")[0];
   // Anımsatıcı rozeti: bana eklenmiş, başlamış ve henüz tamamlamadığım anımsatıcılar.
@@ -246,8 +244,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </div>
         )}
 
-        {f === "red" ? (
-          <RejectedList supabase={supabase} term={term} />
+        {f === "red" || (tf && d === "red") ? (
+          <RejectedList supabase={supabase} term={term} types={tf ? [f === "dmo" ? "dmo_ihalesi" : "ihale_siparisi"] : undefined} />
         ) : (
           <div className="mt-4 space-y-3">
             {list?.length ? (

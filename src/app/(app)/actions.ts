@@ -177,14 +177,13 @@ export async function setResult(
   const tender = !!before && isTenderType(before.type);
   const dmo = before?.type === "dmo_ihalesi";
   if (tender && approved && !contractStart) return { ok: false, error: dmo ? "Sipariş tarihini girin." : "Sözleşme imza tarihini girin." };
-  if (tender && approved && !contractEnd)
-    return { ok: false, error: dmo ? "Teslim son tarihini girin." : "Sözleşme bitiş tarihini girin." };
+  if (tender && approved && !contractEnd) return { ok: false, error: "Teslim son tarihini girin." };
   if (tender && approved && contractEnd! < contractStart!)
     return {
       ok: false,
-      error: dmo ? "Teslim son tarihi sipariş tarihinden önce olamaz." : "Sözleşme bitiş tarihi imza tarihinden önce olamaz.",
+      error: dmo ? "Teslim son tarihi sipariş tarihinden önce olamaz." : "Teslim son tarihi imza tarihinden önce olamaz.",
     };
-  const label = before?.type === "genel_siparis" ? "Genel satış" : dmo ? "DMO ihalesi" : tender ? "İhale" : "Doğrudan temin";
+  const label = before?.type === "genel_siparis" ? "Genel satış" : dmo ? "DMO ihalesi" : tender ? "Hastane ihalesi" : "Doğrudan temin";
   const { error } = await supabase.rpc("set_result", {
     p_record_id: recordId,
     p_approved: approved,
@@ -203,7 +202,7 @@ export async function setResult(
         : dmo && approved
           ? "DMO ihalesi siparişi geldi"
           : tender && approved
-            ? "İhale sözleşmesi imzalandı"
+            ? "Hastane ihalesi sözleşmesi imzalandı"
             : approved
               ? `${label} onaylandı`
               : `${label} reddedildi`,
@@ -243,7 +242,7 @@ export async function setOurPrices(
   if (error) return fail(error);
   notify(
     {
-      title: `${before?.type === "dmo_ihalesi" ? "DMO ihalesi" : "İhale"} fiyatlarımız ${before?.prices_entered_at ? "güncellendi" : "girildi"}`,
+      title: `${before?.type === "dmo_ihalesi" ? "DMO ihalesi" : "Hastane ihalesi"} fiyatlarımız ${before?.prices_entered_at ? "güncellendi" : "girildi"}`,
       body: await tenderInfo(supabase, recordId),
       url: `/kayit/${recordId}`,
     },
@@ -369,22 +368,34 @@ export async function cancelShipment(shipmentId: string): Promise<ActionResult> 
   return { ok: true };
 }
 
-/** Yaklaşık maliyet yalnızca takip amaçlı: onaylandı / reddedildi ya da tekrar açık. */
-export async function setYmStatus(recordId: string, status: "acik" | "onaylandi" | "reddedildi"): Promise<ActionResult> {
+/**
+ * Yaklaşık maliyet sonucu (takip amaçlı): her kalem için hastanenin yaklaşık maliyet fiyatı ve onay/red; kısmi onay olabilir.
+ * reopen=true sonucu geri alır (girilen yaklaşık maliyet fiyatları saklanır).
+ */
+export async function setYmResult(
+  recordId: string,
+  lines: { line_id: string; approved: boolean; ym_price: number | null }[],
+  note: string,
+  reopen = false,
+): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
-  const { data, error } = await supabase
-    .from("records")
-    .update({ status, result_at: status === "acik" ? null : new Date().toISOString() })
-    .eq("id", recordId)
-    .eq("type", "yaklasik_maliyet")
-    .select("hospital, file_no")
-    .single();
+  const { data: before } = await supabase.from("records").select("status").eq("id", recordId).single();
+  const { error } = await supabase.rpc("set_ym_result", { p_record_id: recordId, p_lines: lines, p_note: note, p_reopen: reopen });
   if (error) return fail(error);
-  if (status !== "acik") {
+  if (!reopen) {
+    const { data: rec } = await supabase.from("records").select("hospital, file_no").eq("id", recordId).single();
+    const won = lines.filter((l) => l.approved).length;
     notify(
       {
-        title: status === "onaylandi" ? "Yaklaşık maliyet onaylandı" : "Yaklaşık maliyet reddedildi",
-        body: `${data.hospital}${data.file_no ? ` · ${data.file_no}` : ""}`,
+        title:
+          before?.status === "onaylandi" || before?.status === "reddedildi"
+            ? "Yaklaşık maliyet sonucu güncellendi"
+            : won === 0
+              ? "Yaklaşık maliyet reddedildi"
+              : won < lines.length
+                ? "Yaklaşık maliyet kısmen onaylandı"
+                : "Yaklaşık maliyet onaylandı",
+        body: `${rec?.hospital ?? ""}${rec?.file_no ? ` · ${rec.file_no}` : ""} · ${won}/${lines.length} kalem onaylandı`,
         url: `/kayit/${recordId}`,
       },
       user.id,

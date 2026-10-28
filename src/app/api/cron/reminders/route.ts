@@ -72,7 +72,7 @@ async function handle(request: NextRequest) {
       sampleDue.length === 1
         ? {
             title: `Numune gönderilmeli: ${sampleDue[0].hospital}`,
-            body: `${sampleDue[0].type === "ihale_siparisi" ? "İhale" : "Doğrudan temin"}${sampleDue[0].file_no ? ` (${sampleDue[0].file_no})` : ""} için istenen numune henüz gönderilmedi.`,
+            body: `${sampleDue[0].type === "ihale_siparisi" ? "Hastane ihalesi" : "Doğrudan temin"}${sampleDue[0].file_no ? ` (${sampleDue[0].file_no})` : ""} için istenen numune henüz gönderilmedi.`,
             url: `/kayit/${sampleDue[0].id}`,
             tag: "numune-hatirlatma",
           }

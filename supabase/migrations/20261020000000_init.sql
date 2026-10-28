@@ -189,6 +189,7 @@ create table public.record_lines (
   approved_qty numeric(14, 2) check (approved_qty is null or approved_qty >= 0),
   contract_qty numeric(14, 2),   -- ihale: sözleşmedeki ilk miktar (iş artışı/eksiltmesi en fazla %20)
   region text,                   -- DMO ihalesi: ürünün istendiği şehir
+  ym_price numeric(14, 4) check (ym_price is null or ym_price >= 0),  -- yaklaşık maliyet: hastanenin belirttiği birim fiyat (kalemin para biriminde)
   created_at timestamptz not null default now()
 );
 
@@ -724,11 +725,11 @@ begin
     raise exception 'Bu kayıt için sonuç girilemez.';
   end if;
   if p_approved and v_type in ('ihale_siparisi', 'dmo_ihalesi') and p_contract_end is null then
-    raise exception '%', case when v_type = 'dmo_ihalesi' then 'Teslim son tarihi girilmelidir.' else 'Sözleşme bitiş tarihi girilmelidir.' end;
+    raise exception 'Teslim son tarihi girilmelidir.';
   end if;
   if p_approved and v_type in ('ihale_siparisi', 'dmo_ihalesi') and p_contract_end < coalesce(p_contract_start, current_date) then
     raise exception '%', case when v_type = 'dmo_ihalesi' then 'Teslim son tarihi sipariş tarihinden önce olamaz.'
-                              else 'Sözleşme bitiş tarihi imza tarihinden önce olamaz.' end;
+                              else 'Teslim son tarihi imza tarihinden önce olamaz.' end;
   end if;
   if not p_approved and exists (select 1 from records where id = p_record_id and type = 'genel_siparis') then
     raise exception 'Genel satış reddedilemez.';
@@ -783,6 +784,53 @@ begin
       contract_start = case when v_type in ('ihale_siparisi', 'dmo_ihalesi') and p_approved then coalesce(p_contract_start, current_date) end,
       contract_end = case when v_type in ('ihale_siparisi', 'dmo_ihalesi') and p_approved then p_contract_end end,
       contract_alarm_sent_at = case when contract_end is distinct from p_contract_end then null else contract_alarm_sent_at end
+  where id = p_record_id;
+end;
+$$;
+
+-- Yaklaşık maliyet sonucu (takip amaçlı; sevkiyat yok). Kalem bazında kısmi onay:
+-- p_lines: [{line_id, approved, ym_price}] — hastanenin yaklaşık maliyet fiyatı ve kalemin onaylanıp onaylanmadığı.
+-- En az bir kalem onaylıysa kayıt "onaylandi", hiçbiri değilse "reddedildi". p_reopen=true sonucu geri alır.
+create or replace function public.set_ym_result(p_record_id uuid, p_lines jsonb, p_note text default null, p_reopen boolean default false)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_line jsonb;
+  v_price numeric;
+begin
+  if not exists (select 1 from records where id = p_record_id and type = 'yaklasik_maliyet') then
+    raise exception 'Bu kayıt için sonuç girilemez.';
+  end if;
+  if p_reopen then
+    update record_lines set approved = null, approved_qty = null where record_id = p_record_id;
+    update records set status = 'acik', result_at = null, result_note = null where id = p_record_id;
+    return;
+  end if;
+  for v_line in select * from jsonb_array_elements(coalesce(p_lines, '[]'::jsonb)) loop
+    v_price := nullif(v_line ->> 'ym_price', '')::numeric;
+    if v_price is not null and v_price < 0 then
+      raise exception 'Yaklaşık maliyet fiyatı negatif olamaz.';
+    end if;
+    update record_lines
+    set approved = coalesce((v_line ->> 'approved')::boolean, false),
+        approved_qty = case when coalesce((v_line ->> 'approved')::boolean, false) then quantity end,
+        ym_price = v_price
+    where id = (v_line ->> 'line_id')::uuid and record_id = p_record_id;
+    if not found then
+      raise exception 'Kalem bulunamadı.';
+    end if;
+  end loop;
+  if exists (select 1 from record_lines where record_id = p_record_id and approved is null) then
+    raise exception 'Her kalem için sonuç seçilmelidir.';
+  end if;
+  update records
+  set status = case when exists (select 1 from record_lines where record_id = p_record_id and approved)
+                    then 'onaylandi'::public.record_status else 'reddedildi'::public.record_status end,
+      result_at = now(),
+      result_note = nullif(trim(p_note), '')
   where id = p_record_id;
 end;
 $$;
@@ -973,7 +1021,7 @@ declare
   v_id uuid;
   v_item jsonb;
 begin
-  if not exists (select 1 from records where id = p_record_id and status = 'onaylandi') then
+  if not exists (select 1 from records where id = p_record_id and status = 'onaylandi' and type <> 'yaklasik_maliyet') then
     raise exception 'Sadece onaylanmış kayıtlar sevk edilebilir.';
   end if;
 

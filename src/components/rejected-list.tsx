@@ -3,23 +3,33 @@ import { Archive } from "lucide-react";
 import type { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { formatDate, formatMoney, formatQty } from "@/lib/format";
-import { lineName, type RecordLine, type SalesRecord } from "@/lib/types";
+import { lineName, type RecordLine, type RecordType, type SalesRecord } from "@/lib/types";
+import { TypeBadge } from "@/components/status-badge";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
-type Row = RecordLine & { records: Pick<SalesRecord, "id" | "hospital" | "file_no" | "record_date" | "status" | "created_at"> };
+type Row = RecordLine & { records: Pick<SalesRecord, "id" | "hospital" | "file_no" | "record_date" | "status" | "type" | "created_at"> };
 
 /**
  * Reddedilen doğrudan temin / ihale kalemleri ve onaylananlarda onaylanmayan kalemler:
  * "hangi ürüne hangi fiyatı verdik, reddedildi" bilgisini ürün ve hastane bazında arar.
- * Ana ekrandaki "Reddedilen" sekmesinde gösterilir.
+ * Ana ekrandaki "Reddedilen" sekmesinde (türü rozetle) ve ihale sekmelerinin Reddedilen bölümünde (yalnız o tür) gösterilir.
  */
-export async function RejectedList({ supabase, term }: { supabase: SupabaseClient; term: string }) {
+const ALL_TYPES: RecordType[] = ["dogrudan_temin", "ihale_siparisi", "dmo_ihalesi"];
+
+export async function RejectedList({
+  supabase,
+  term,
+  types = ALL_TYPES,
+}: {
+  supabase: SupabaseClient;
+  term: string;
+  types?: RecordType[];
+}) {
   let query = supabase
     .from("record_lines")
     .select("*, records!inner(id, hospital, file_no, record_date, status, type, created_at)")
-    .in("records.type", ["dogrudan_temin", "ihale_siparisi", "dmo_ihalesi"])
-    .not("unit_price", "is", null)
+    .in("records.type", types)
     .eq("approved", false)
     .in("records.status", ["reddedildi", "onaylandi"])
     .order("created_at", { ascending: false })
@@ -33,8 +43,7 @@ export async function RejectedList({ supabase, term }: { supabase: SupabaseClien
     const { data: byHospital } = await supabase
       .from("record_lines")
       .select("*, records!inner(id, hospital, file_no, record_date, status, type, created_at)")
-      .in("records.type", ["dogrudan_temin", "ihale_siparisi", "dmo_ihalesi"])
-      .not("unit_price", "is", null)
+      .in("records.type", types)
       .eq("approved", false)
       .in("records.status", ["reddedildi", "onaylandi"])
       .ilike("records.hospital", `%${term}%`)
@@ -64,6 +73,11 @@ export async function RejectedList({ supabase, term }: { supabase: SupabaseClien
           <Link key={rec.id} href={`/kayit/${rec.id}`} className="card block p-4">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
+                {types.length > 1 && (
+                  <div className="mb-1">
+                    <TypeBadge type={rec.type} />
+                  </div>
+                )}
                 <h3 className="truncate text-[15px] font-semibold">{rec.hospital}</h3>
                 <p className="text-[12px] text-muted">
                   {formatDate(rec.record_date)}
@@ -87,7 +101,11 @@ export async function RejectedList({ supabase, term }: { supabase: SupabaseClien
                       {formatQty(l.quantity)} {l.unit}
                     </span>
                   </span>
-                  <b className="shrink-0 font-semibold tabular-nums">{formatMoney(l.unit_price ?? 0, l.currency)}</b>
+                  {l.unit_price === null ? (
+                    <span className="shrink-0 text-[12px] text-muted">fiyat girilmedi</span>
+                  ) : (
+                    <b className="shrink-0 font-semibold tabular-nums">{formatMoney(l.unit_price, l.currency)}</b>
+                  )}
                 </li>
               ))}
             </ul>
@@ -97,7 +115,7 @@ export async function RejectedList({ supabase, term }: { supabase: SupabaseClien
         <EmptyState
           icon={<Archive size={26} />}
           title={term ? "Sonuç bulunamadı" : "Reddedilen kayıt yok"}
-          text={term ? undefined : "Reddedilen doğrudan teminler fiyatlarıyla birlikte burada saklanır."}
+          text={term ? undefined : "Reddedilen ve bize kalmayan ürünler fiyatlarıyla birlikte burada saklanır."}
         />
       )}
     </div>

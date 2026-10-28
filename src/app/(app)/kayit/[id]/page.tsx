@@ -97,7 +97,8 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
   const decided = record.status === "onaylandi" || record.status === "reddedildi";
   const gs = record.type === "genel_siparis";
   // Onaylanan DT ve genel satışta toplam, onaylanan miktarlar üzerinden hesaplanır.
-  const approved = record.status === "onaylandi" && (record.type === "dogrudan_temin" || gs || tender);
+  const ym = record.type === "yaklasik_maliyet";
+  const approved = record.status === "onaylandi" && (record.type === "dogrudan_temin" || gs || tender || ym);
   const source = linked.data?.find((r) => r.id === record.source_record_id);
   const converted = linked.data?.find((r) => r.id === record.converted_record_id);
 
@@ -268,6 +269,17 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                         {formatQty(qty)} {l.unit}
                         {l.unit_price === null ? " · fiyat girilmedi" : ` × ${formatMoney(l.unit_price, l.currency)}`}
                       </p>
+                      {ym && l.ym_price != null && (
+                        <p
+                          className={`mt-0.5 text-[12px] font-semibold ${
+                            l.unit_price !== null && Number(l.unit_price) > Number(l.ym_price) ? "text-accent-600" : "text-emerald-700"
+                          }`}
+                        >
+                          Yaklaşık maliyet {formatMoney(l.ym_price, l.currency)}
+                          {l.unit_price !== null &&
+                            (Number(l.unit_price) > Number(l.ym_price) ? " · fiyatımız üstünde" : " · fiyatımız altında")}
+                        </p>
+                      )}
                       {change !== 0 && (
                         <p className={`mt-0.5 text-[12px] font-semibold ${change > 0 ? "text-emerald-700" : "text-amber-700"}`}>
                           Sözleşme {formatQty(l.contract_qty)} {l.unit} · iş {change > 0 ? "artışı" : "eksiltmesi"} %{Math.abs(change)}
@@ -278,7 +290,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                       {l.unit_price !== null && (
                         <p className="text-[15px] font-semibold tabular-nums">{formatMoney(qty * Number(l.unit_price), l.currency)}</p>
                       )}
-                      {approved && (
+                      {(approved || (ym && decided)) && (
                         <span className={`text-[12px] font-semibold ${l.approved ? "text-emerald-700" : "text-accent-600"}`}>
                           {l.approved ? (dmo ? "Siparişli" : tender ? "Sözleşmeli" : "Onaylandı") : tender ? "Reddedildi" : "Onaylanmadı"}
                         </span>
@@ -306,7 +318,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                   <b className="font-semibold">{formatDate(record.contract_start)}</b>
                 </p>
                 <p>
-                  <span className="block text-muted">{dmo ? "Teslim son tarihi" : "Bitiş"}</span>
+                  <span className="block text-muted">Teslim son tarihi</span>
                   <b className="font-semibold">{formatDate(record.contract_end)}</b>
                 </p>
               </div>

@@ -27,7 +27,7 @@ import {
   requestSample,
   setGuarantee,
   setResult,
-  setYmStatus,
+  setYmResult,
   type ActionResult,
 } from "@/app/(app)/actions";
 import { Sheet } from "./sheet";
@@ -75,7 +75,7 @@ export function RecordActions({
   progress: Record<string, LineProgress>;
   samples?: SampleItem[];
 }) {
-  const [sheet, setSheet] = useState<null | "call" | "result" | "ship" | "sample" | "prices" | "adjust">(null);
+  const [sheet, setSheet] = useState<null | "call" | "result" | "ship" | "sample" | "prices" | "adjust" | "ym">(null);
   const close = () => setSheet(null);
   const isDt = record.type === "dogrudan_temin";
   const isGs = record.type === "genel_siparis";
@@ -86,7 +86,7 @@ export function RecordActions({
   const sampleable = isDt || isIhale; // numune adımı doğrudan temin ve ihalede
   const canCall = isDt && (record.status === "arama_bekliyor" || record.status === "arandi");
   const decided = record.status === "onaylandi" || record.status === "reddedildi";
-  const canShip = record.status === "onaylandi" && lines.some((l) => l.approved && Number(progress[l.id]?.remaining ?? 0) > 0);
+  const canShip = !isYm && record.status === "onaylandi" && lines.some((l) => l.approved && Number(progress[l.id]?.remaining ?? 0) > 0);
   const ym = useAction();
   const sent = useAction();
   const guarantee = useAction();
@@ -199,23 +199,19 @@ export function RecordActions({
           </button>
         )}
         {isYm && record.status === "acik" && (
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => ym.run(() => setYmStatus(record.id, "onaylandi"))} className="btn-primary" disabled={ym.pending}>
-              <CheckCircle2 size={18} /> Onaylandı
-            </button>
-            <button
-              onClick={() => ym.run(() => setYmStatus(record.id, "reddedildi"))}
-              className="btn-secondary text-accent-600"
-              disabled={ym.pending}
-            >
-              <XCircle size={18} /> Reddedildi
-            </button>
-          </div>
+          <button onClick={() => setSheet("ym")} className="btn-primary">
+            <CheckCircle2 size={18} /> Sonuç gir
+          </button>
         )}
         {isYm && decided && (
-          <button onClick={() => ym.run(() => setYmStatus(record.id, "acik"))} className="btn-secondary" disabled={ym.pending}>
-            <Undo2 size={18} /> Sonucu geri al
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setSheet("ym")} className="btn-secondary">
+              <Pencil size={17} /> Sonucu düzenle
+            </button>
+            <button onClick={() => ym.run(() => setYmResult(record.id, [], "", true))} className="btn-secondary" disabled={ym.pending}>
+              <Undo2 size={18} /> Sonucu geri al
+            </button>
+          </div>
         )}
         <ErrorText error={ym.error} />
       </div>
@@ -223,6 +219,7 @@ export function RecordActions({
       <CallSheet open={sheet === "call"} onClose={close} record={record} />
       {/* Her açılışta güncel sonuçla yeniden başlasın diye yalnızca açıkken bağlanır */}
       {sheet === "result" && <ResultSheet open onClose={close} record={record} lines={lines} progress={progress} />}
+      {sheet === "ym" && <YmSheet onClose={close} record={record} lines={lines} />}
       {sheet === "sample" && <SampleSheet open onClose={close} record={record} lines={lines} samples={samples} />}
       {sheet === "prices" && <PricesSheet open onClose={close} record={record} lines={lines} />}
       {sheet === "adjust" && <AdjustSheet open onClose={close} record={record} lines={lines} progress={progress} />}
@@ -435,15 +432,15 @@ function ResultSheet({
         approve: "Sözleşme imzalandı",
         pick: "Sözleşmeye davet edilen ürünleri seçip sözleşme miktarını girin. Seçilmeyen ürünler reddedilmiş sayılır.",
         start: "İmza tarihi",
-        end: "Bitiş tarihi",
-        hint: "İmza tarihi sözleşmenin başlangıcıdır. Bitiş, hastanenin tüm ürünleri alacağı son tarihtir.",
+        end: "Teslim son tarihi",
+        hint: "İmza tarihi sözleşmenin başlangıcıdır. Teslim son tarihi, hastanenin tüm ürünleri alacağı son tarihtir.",
         qty: "Sözleşme",
         none: "Sözleşme imzalanan en az bir ürün seçin.",
         noStart: "Sözleşme imza tarihini girin.",
-        noEnd: "Sözleşme bitiş tarihini girin.",
-        order: "Sözleşme bitiş tarihi imza tarihinden önce olamaz.",
+        noEnd: "Teslim son tarihini girin.",
+        order: "Teslim son tarihi imza tarihinden önce olamaz.",
         edit: "Sözleşmeyi düzenle",
-        title: "İhale sonucu",
+        title: "Hastane ihalesi sonucu",
       };
   const [contractStart, setContractStart] = useState(record.contract_start ?? todayIstanbul());
   const [contractEnd, setContractEnd] = useState(record.contract_end ?? "");
@@ -630,6 +627,127 @@ function ResultSheet({
         <button className={mode === "onay" ? "btn-primary w-full" : "btn-danger w-full"} disabled={pending} onClick={submit}>
           <Spinner show={pending} />{" "}
           {mode === "onay" ? (tender ? `${T.approve} olarak kaydet` : "Onaylandı olarak kaydet") : "Reddedildi olarak kaydet"}
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/**
+ * Yaklaşık maliyet sonucu: her kalem için hastanenin yaklaşık maliyet birim fiyatı girilir ve kalem tek tek onaylanır.
+ * Fiyatımız yaklaşık maliyetin altında/eşitse kalem onaylı gelir; kullanıcı değiştirebilir (kısmi onay).
+ */
+function YmSheet({ onClose, record, lines }: { onClose: () => void; record: SalesRecord; lines: RecordLine[] }) {
+  const { pending, error, run, setError } = useAction();
+  const decided = record.status === "onaylandi" || record.status === "reddedildi";
+  const [note, setNote] = useState(decided ? (record.result_note ?? "") : "");
+  const [bad, setBad] = useState<string>();
+  const [sel, setSel] = useState<Record<string, { on: boolean; ym: string }>>(() =>
+    Object.fromEntries(
+      lines.map((l) => [
+        l.id,
+        {
+          on: decided ? Boolean(l.approved) : true,
+          ym: l.ym_price == null ? "" : String(l.ym_price).replace(".", ","),
+        },
+      ]),
+    ),
+  );
+  const under = (l: RecordLine, ym: string) => {
+    const v = parseNum(ym);
+    if (l.unit_price === null || !Number.isFinite(v)) return null;
+    return Number(l.unit_price) <= v;
+  };
+  const setYm = (l: RecordLine, ym: string) => {
+    if (bad === l.id) setBad(undefined);
+    const u = under(l, ym);
+    setSel((x) => ({ ...x, [l.id]: { ym, on: u === null ? x[l.id].on : u } }));
+  };
+  const submit = () => {
+    const out: { line_id: string; approved: boolean; ym_price: number | null }[] = [];
+    for (const l of lines) {
+      const s = sel[l.id];
+      const v = s.ym.trim() ? parseNum(s.ym) : null;
+      if (v !== null && (!Number.isFinite(v) || v < 0)) {
+        setBad(l.id);
+        setSel((x) => ({ ...x, [l.id]: { ...s, ym: "" } }));
+        return setError(`${lineName(l)} için geçerli bir yaklaşık maliyet fiyatı girin.`);
+      }
+      out.push({ line_id: l.id, approved: s.on, ym_price: v });
+    }
+    run(() => setYmResult(record.id, out, note), onClose);
+  };
+  const won = lines.filter((l) => sel[l.id].on).length;
+  return (
+    <Sheet open onClose={onClose} title="Yaklaşık maliyet sonucu">
+      <div className="space-y-3">
+        <p className="text-sm text-muted">
+          Hastanenin belirttiği yaklaşık maliyet birim fiyatlarını girin ve onaylanan kalemleri işaretleyin. İşaretlenmeyen kalemler
+          reddedilmiş sayılır.
+        </p>
+        {lines.map((l) => {
+          const s = sel[l.id];
+          const u = under(l, s.ym);
+          return (
+            <div
+              key={l.id}
+              className={`rounded-xl p-3 ring-1 transition ${s.on ? "bg-white ring-brand-200" : "bg-canvas ring-transparent"}`}
+            >
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={s.on}
+                  onChange={(e) => setSel((x) => ({ ...x, [l.id]: { ...s, on: e.target.checked } }))}
+                  className="mt-0.5 h-5 w-5 accent-brand-600"
+                  aria-label={`${l.product_name} onaylandı`}
+                />
+                <span className="min-w-0 flex-1">
+                  <b className="block text-[15px] font-semibold">{lineName(l)}</b>
+                  <span className="text-[13px] text-muted">
+                    {formatQty(l.quantity)} {l.unit} · Fiyatımız{" "}
+                    {l.unit_price === null ? "girilmedi" : formatMoney(l.unit_price, l.currency)}
+                  </span>
+                </span>
+                <span className={`chip shrink-0 ${s.on ? "bg-emerald-50 text-emerald-700" : "bg-accent-50 text-accent-700"}`}>
+                  {s.on ? "Onaylandı" : "Reddedildi"}
+                </span>
+              </label>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-8">
+                <span className="text-[13px] text-muted">Yaklaşık maliyet</span>
+                <input
+                  value={s.ym}
+                  onChange={(e) => setYm(l, e.target.value)}
+                  aria-invalid={bad === l.id || undefined}
+                  inputMode="decimal"
+                  className="input w-28 py-2 text-right"
+                  placeholder="Birim fiyat"
+                  aria-label={`${l.product_name} yaklaşık maliyet fiyatı`}
+                />
+                <span className="text-[13px] text-muted">{l.currency === "TRY" ? "TL" : l.currency}</span>
+                {u !== null && (
+                  <span className={`w-full text-[12px] font-medium ${u ? "text-emerald-700" : "text-accent-600"}`}>
+                    Fiyatımız yaklaşık maliyetin {u ? "altında" : "üstünde"}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={2}
+          className="input resize-none"
+          placeholder="Not (isteğe bağlı)"
+        />
+        <ErrorText error={error} />
+        <button className={won ? "btn-primary w-full" : "btn-danger w-full"} disabled={pending} onClick={submit}>
+          <Spinner show={pending} />{" "}
+          {won === 0
+            ? "Reddedildi olarak kaydet"
+            : won < lines.length
+              ? `${won}/${lines.length} kalem onaylı kaydet`
+              : "Onaylandı olarak kaydet"}
         </button>
       </div>
     </Sheet>

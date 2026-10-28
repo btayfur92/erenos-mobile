@@ -33,6 +33,7 @@ export interface RecordLine {
   approved_qty: number | null;
   contract_qty: number | null; // ihale: sözleşmedeki ilk miktar
   region: string | null; // DMO ihalesi: ürünün istendiği şehir (ör. Ankara, İstanbul 1. Bölge)
+  ym_price?: number | null; // yaklaşık maliyet: hastanenin belirttiği birim fiyat (kalemin para biriminde)
 }
 
 export interface SalesRecord {
@@ -220,7 +221,7 @@ export interface Profile {
 export const RECORD_TYPE_LABEL: Record<RecordType, string> = {
   yaklasik_maliyet: "Yaklaşık Maliyet",
   dogrudan_temin: "Doğrudan Temin",
-  ihale_siparisi: "İhale",
+  ihale_siparisi: "Hastane İhalesi",
   dmo_ihalesi: "DMO İhalesi",
   genel_siparis: "Genel Satış",
 };

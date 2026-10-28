@@ -91,7 +91,9 @@ function Stat({ value, label, cls = "text-ink" }: { value: number; label: string
 
 const sectionTitle = "mb-2 mt-6 px-1 text-[13px] font-bold uppercase tracking-wider text-muted";
 const priceText = (l: RecordLine) =>
-  `${formatQty(l.quantity)} ${l.unit}${l.unit_price === null ? " · fiyat girilmedi" : ` × ${formatMoney(l.unit_price, l.currency)}`}`;
+  `${formatQty(l.quantity)} ${l.unit}${l.unit_price === null ? " · fiyat girilmedi" : ` × ${formatMoney(l.unit_price, l.currency)}`}${
+    l.ym_price != null ? ` · YM ${formatMoney(l.ym_price, l.currency)}` : ""
+  }`;
 
 /**
  * Raporlar: hastane/müşteri seçilince ona verilen tüm fiyatlar (tarih, sonuç, rakip fiyatları) ve görüşmeleri;
