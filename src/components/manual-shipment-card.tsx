@@ -10,7 +10,7 @@ import { formatDate, formatDateTime, formatQty, todayIstanbul } from "@/lib/form
 import type { ManualShipment } from "@/lib/types";
 
 /** Elle eklenen sevkiyat kartı: gelecek (tedarikçiden bize) ya da doğrudan temine bağlı olmayan gidecek. */
-/** canDeliver: teslim edildi / teslim alındı işaretleyebilir (satış kullanıcısında yok). */
+/** canDeliver: gidecekte teslim edildi işaretleyebilir (satış kullanıcısında yok; gelecekte teslim alındıyı herkes işaretler). */
 export function ManualShipmentCard({
   item,
   names,
@@ -134,7 +134,7 @@ export function ManualShipmentCard({
           </button>
         </div>
       ) : (
-        canDeliver && (
+        (canDeliver || gelecek) && (
           <button className="btn-primary mt-3 w-full py-2.5" disabled={pending} onClick={() => setDelivering(true)}>
             {pending ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={17} />} {doneLabel}
           </button>

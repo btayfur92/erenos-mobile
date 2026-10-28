@@ -1000,7 +1000,8 @@ declare
   v_done numeric;
   v_qty numeric;
 begin
-  if not public.can_deliver() then
+  -- Gidecekte "teslim edildi" teslim yetkisinde; gelecekte "teslim alındı" satış kullanıcısı da işaretler.
+  if not public.can_deliver() and not (public.is_active_user() and exists (select 1 from manual_shipments where id = p_id and direction = 'gelecek')) then
     raise exception 'Teslim işaretleme yetkiniz yok.';
   end if;
   select quantity into v_total from manual_shipments where id = p_id and status = 'bekliyor' for update;
@@ -1137,11 +1138,15 @@ create policy "shipments_read" on public.shipments for select to authenticated u
 create policy "shipments_insert" on public.shipments for insert to authenticated with check (public.can_sell());
 create policy "shipments_delete" on public.shipments for delete to authenticated using (public.can_sell());
 create policy "shipments_deliver" on public.shipments for update to authenticated using (public.can_deliver()) with check (public.can_deliver());
--- Elle eklenen sevkiyatı herkes ekler/düzeltir; teslim kaydı yalnızca teslim yetkisinde.
+-- Elle eklenen sevkiyatı herkes ekler/düzeltir; teslim kaydı teslim yetkisinde, gelecek sevkiyatın "teslim alındı"sı herkeste (satış dahil).
 create policy "manual_shipment_deliveries_read" on public.manual_shipment_deliveries
   for select to authenticated using (public.is_active_user());
 create policy "manual_shipment_deliveries_write" on public.manual_shipment_deliveries
-  for all to authenticated using (public.can_deliver()) with check (public.can_deliver());
+  for all to authenticated
+  using (public.can_deliver() or (public.is_active_user() and exists (
+    select 1 from public.manual_shipments m where m.id = shipment_id and m.direction = 'gelecek')))
+  with check (public.can_deliver() or (public.is_active_user() and exists (
+    select 1 from public.manual_shipments m where m.id = shipment_id and m.direction = 'gelecek')));
 create policy "meetings_all" on public.meetings
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 

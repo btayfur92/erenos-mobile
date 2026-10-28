@@ -221,19 +221,19 @@ export interface Profile {
 
 /**
  * Kullanıcı tipleri: admin her şey + kullanıcı/şifre yönetimi; yönetici kullanıcı yönetimi hariç her şey;
- * satış teslim edildi / teslim alındı işaretleyemez; sevkiyat yalnızca teslim işaretler, elle sevkiyat ve görüşme ekler.
+ * satış gidecek sevkiyatta teslim edildi işaretleyemez (gelecekte teslim alındı der); sevkiyat yalnızca teslim işaretler, elle sevkiyat ve görüşme ekler.
  */
 export type UserRole = "admin" | "yonetici" | "satis" | "sevkiyat";
 export const USER_ROLES: { value: UserRole; label: string; hint: string }[] = [
   { value: "admin", label: "Admin", hint: "Her şey; kullanıcı açar, şifre değiştirir" },
   { value: "yonetici", label: "Yönetici", hint: "Kullanıcı yönetimi hariç her şey" },
-  { value: "satis", label: "Satış", hint: "Teslim edildi işaretleyemez" },
+  { value: "satis", label: "Satış", hint: "Gidecekte teslim edildi diyemez; gelecekte teslim alındı der" },
   { value: "sevkiyat", label: "Sevkiyat", hint: "Teslim işaretler, sevkiyat ve görüşme ekler; kayıt açamaz" },
 ];
 export const ROLE_LABEL = Object.fromEntries(USER_ROLES.map((r) => [r.value, r.label])) as Record<UserRole, string>;
 /** Satış kayıtlarını açıp değiştirebilir, sevkiyata aktarabilir. */
 export const canSell = (role: UserRole) => role !== "sevkiyat";
-/** Teslim edildi / teslim alındı işaretleyebilir. */
+/** Gidecek sevkiyatta teslim edildi işaretleyebilir (gelecekte teslim alındıyı herkes işaretler). */
 export const canDeliver = (role: UserRole) => role !== "satis";
 
 export const RECORD_TYPE_LABEL: Record<RecordType, string> = {

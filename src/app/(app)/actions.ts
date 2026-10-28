@@ -524,9 +524,12 @@ export async function updateManualShipment(id: string, input: ManualShipmentInpu
  * (quantity); kalan sıfıra inince sevkiyat tamamlanır. quantity null ise kalanın tamamı teslim sayılır.
  */
 export async function completeManualShipment(id: string, quantity: number | null = null): Promise<ActionResult> {
-  const ctx = await requireRole("deliver");
-  if (!ctx) return { ok: false, error: NO_PERMISSION };
-  const { supabase, user } = ctx;
+  const { supabase, user, profile } = await requireUser();
+  if (!canDeliver(profile.role)) {
+    // Satış yalnızca gelecek sevkiyatta "teslim alındı" diyebilir.
+    const { data: m } = await supabase.from("manual_shipments").select("direction").eq("id", id).single();
+    if (m?.direction !== "gelecek") return { ok: false, error: NO_PERMISSION };
+  }
   if (quantity !== null && !(quantity > 0)) return { ok: false, error: "Teslim miktarı sıfırdan büyük olmalı." };
   const { data: done, error } = await supabase.rpc("deliver_manual_shipment", { p_id: id, p_quantity: quantity });
   if (error) return fail(error);
