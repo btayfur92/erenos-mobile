@@ -225,7 +225,7 @@ async function sendPersonalReminders(admin: Admin, force: boolean): Promise<{ se
     await sendToAll(
       {
         title: `Anımsatıcı: ${r.reminders.title}`,
-        body: r.reminders.detail || "Tamamladığınızda uygulamadan “Tamamladım” deyin.",
+        body: r.reminders.detail || "Tamamladığınızda uygulamadan “Tamamlandı” deyin.",
         url: "/animsaticilar",
         tag: `animsatici-${r.reminder_id}`,
       },

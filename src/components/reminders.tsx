@@ -44,6 +44,10 @@ export function ReminderCard({ reminder: r, me, people }: { reminder: Reminder; 
   const owner = r.created_by === me;
   const started = Date.parse(r.starts_at) <= Date.now();
   const doneCount = recipients.filter((x) => x.done_at).length;
+  const firstDone = recipients
+    .map((x) => x.done_at)
+    .filter((d): d is string => !!d)
+    .sort()[0]; // ilk tamamlayan yeşil görünür
 
   const act = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
     start(async () => {
@@ -92,13 +96,14 @@ export function ReminderCard({ reminder: r, me, people }: { reminder: Reminder; 
           <Users size={13} /> {doneCount}/{recipients.length} kişi tamamladı
         </p>
         {recipients.map((x) => (
+          // İlk tamamlayan yeşil, sonrakiler siyah görünür.
           <div key={x.user_id} className="flex items-center justify-between gap-2 text-[13px]">
             <span className={`truncate ${x.done_at ? "text-ink" : "text-ink/80"}`}>
               {x.user_id === me ? "Siz" : (names[x.user_id] ?? "—")}
             </span>
             {x.done_at ? (
-              <span className="flex shrink-0 items-center gap-1 font-medium text-emerald-700">
-                <Check size={14} /> Tamamladı · {formatDateTime(x.done_at)}
+              <span className={`flex shrink-0 items-center gap-1 font-medium ${x.done_at === firstDone ? "text-emerald-700" : "text-ink"}`}>
+                <Check size={14} /> Tamamlandı · {formatDateTime(x.done_at)}
               </span>
             ) : (
               <span className="shrink-0 text-muted">Bekliyor</span>
@@ -130,7 +135,7 @@ export function ReminderCard({ reminder: r, me, people }: { reminder: Reminder; 
           </button>
         ) : (
           <button onClick={() => act(() => setReminderDone(r.id, true))} disabled={pending} className="btn-primary mt-3 w-full">
-            {pending ? <Loader2 size={18} className="animate-spin" /> : <CircleCheck size={18} />} Tamamladım
+            {pending ? <Loader2 size={18} className="animate-spin" /> : <CircleCheck size={18} />} Tamamlandı
           </button>
         )
       ) : null}
@@ -277,7 +282,7 @@ function ReminderSheet({ reminder, me, people, onClose }: { reminder?: Reminder;
             ))}
           </select>
           <p className="mt-1 text-[12px] text-muted">
-            Bildirimler mesai saatlerinde gelir (ayarından mesai dışını açan kişiye 08:00–22:00). Her kişi “Tamamladım” deyince onun
+            Bildirimler mesai saatlerinde gelir (ayarından mesai dışını açan kişiye 08:00–22:00). Her kişi “Tamamlandı” deyince onun
             bildirimleri durur.
           </p>
         </div>
