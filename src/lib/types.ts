@@ -281,7 +281,8 @@ export interface Reminder {
 }
 
 export const REMINDER_INTERVALS: { minutes: number; label: string }[] = [
-  { minutes: 60, label: "Saatte bir" },
+  { minutes: 30, label: "30 dakikada bir" },
+  { minutes: 60, label: "1 saatte bir" },
   { minutes: 120, label: "2 saatte bir" },
   { minutes: 180, label: "3 saatte bir" },
   { minutes: 240, label: "4 saatte bir" },

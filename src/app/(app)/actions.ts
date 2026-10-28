@@ -588,9 +588,33 @@ export async function saveReminder(input: ReminderInput): Promise<ActionResult> 
 }
 
 export async function setReminderDone(reminderId: string, done: boolean): Promise<ActionResult> {
-  const { supabase } = await requireUser();
+  const { supabase, user, profile } = await requireUser();
   const { error } = await supabase.rpc("set_reminder_done", { p_reminder_id: reminderId, p_done: done });
   if (error) return fail(error);
+  // Tamamlanınca anımsatıcıdaki diğer kişilere ve kurana bir kez bildirim gider.
+  if (done) {
+    const { data: r } = await supabase
+      .from("reminders")
+      .select("title, created_by, reminder_recipients(user_id)")
+      .eq("id", reminderId)
+      .single();
+    const others = [...new Set([...(r?.reminder_recipients ?? []).map((x) => x.user_id), r?.created_by])].filter(
+      (id): id is string => !!id && id !== user.id,
+    );
+    if (r && others.length) {
+      const who = profile.full_name || profile.username;
+      after(async () => {
+        try {
+          await sendToAll(
+            { title: `${who} tamamladı`, body: r.title, url: "/animsaticilar", tag: `animsatici-tamam-${reminderId}` },
+            { onlyUserIds: others },
+          );
+        } catch (err) {
+          console.error("[push] bildirim gönderilemedi", err);
+        }
+      });
+    }
+  }
   refresh();
   return { ok: true };
 }

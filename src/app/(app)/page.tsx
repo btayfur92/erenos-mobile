@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlarmClock, CheckCircle2, Clock, FileSignature, FileText, Gavel, Search, XCircle } from "lucide-react";
+import { Bell, BellRing, CheckCircle2, Clock, FileSignature, FileText, Gavel, Search, XCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
 import { getRates } from "@/lib/fx";
@@ -117,12 +117,14 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         action={
           <Link
             href="/animsaticilar"
-            className="relative grid h-10 w-10 place-items-center rounded-xl text-ink hover:bg-canvas"
+            className={`relative grid h-10 w-10 place-items-center rounded-xl shadow-sm transition active:scale-95 ${
+              myReminders ? "bg-brand-600 text-white shadow-brand-600/30" : "bg-brand-50 text-brand-600 ring-1 ring-brand-100"
+            }`}
             aria-label={myReminders ? `Anımsatıcılar, ${myReminders} bekleyen` : "Anımsatıcılar"}
           >
-            <AlarmClock size={22} />
+            {myReminders ? <BellRing size={21} /> : <Bell size={21} />}
             {!!myReminders && (
-              <span className="absolute right-0.5 top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-accent-600 px-1 text-[11px] font-bold text-white ring-2 ring-white">
+              <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-accent-600 px-1 text-[11px] font-bold text-white ring-2 ring-white">
                 {myReminders}
               </span>
             )}

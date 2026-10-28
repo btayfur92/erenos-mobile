@@ -921,7 +921,7 @@ create table public.reminders (
   title text not null check (length(trim(title)) > 0),
   detail text,
   starts_at timestamptz not null,               -- ilk hatırlatma anı; sonrakiler starts_at + k * aralık
-  interval_minutes int not null check (interval_minutes in (60, 120, 180, 240, 1440, 10080)),
+  interval_minutes int not null check (interval_minutes in (30, 60, 120, 180, 240, 1440, 10080)),
   created_by uuid references public.profiles (id) on delete set null default auth.uid(),
   created_at timestamptz not null default now(),
   updated_at timestamptz
