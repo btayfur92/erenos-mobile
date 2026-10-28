@@ -37,7 +37,7 @@ export interface LineInput {
   unit: string;
   unit_price: number | null; // ihalede null (fiyat sonradan girilir)
   currency: string;
-  region?: string; // DMO ihalesi: kalemin bölgesi
+  region?: string; // DMO ihalesi: ürünün istendiği şehir
 }
 
 export interface RecordInput {
@@ -61,7 +61,7 @@ export async function saveRecord(input: RecordInput): Promise<ActionResult> {
   const lines = input.lines.filter((l) => l.product_name.trim());
   if (!lines.length) return { ok: false, error: "En az bir ürün kalemi girin." };
   if (lines.some((l) => !(Number(l.quantity) > 0))) return { ok: false, error: "Ürün miktarları sıfırdan büyük olmalı." };
-  if (input.type === "dmo_ihalesi" && lines.some((l) => !l.region?.trim())) return { ok: false, error: "Her ürün için bölge girin." };
+  if (input.type === "dmo_ihalesi" && lines.some((l) => !l.region?.trim())) return { ok: false, error: "Her ürün için şehir girin." };
   if (!isTenderType(input.type) && lines.some((l) => l.unit_price === null || !(Number(l.unit_price) >= 0)))
     return { ok: false, error: "Fiyatları kontrol edin." };
   const phone = input.contact_phone.trim() ? normalizePhone(input.contact_phone) : "";

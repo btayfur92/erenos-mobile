@@ -116,7 +116,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                 : "/"
         }
         action={
-          // İhale ve DMO ihalesi sonuçlandıktan sonra da düzenlenebilir (ad, bölge, iletişim; kalem eklenip silinemez).
+          // İhale ve DMO ihalesi sonuçlandıktan sonra da düzenlenebilir (ad, şehir, iletişim; kalem eklenip silinemez).
           (!decided || tender) && (
             <Link
               href={`/kayit/${id}/duzenle`}

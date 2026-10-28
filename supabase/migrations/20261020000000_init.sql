@@ -23,7 +23,7 @@ create type public.record_type as enum (
 -- İhale: ihale_bekliyor -> [numune_istendi -> numune_gonderildi] -> onaylandi (sözleşme) | reddedildi
 --      Fiyatlar ihale öncesi girilir, rakip fiyatları ihaleden sonra; onaylananlar sözleşmeli kalemlerdir.
 -- DMO: ihale_bekliyor -> onaylandi (sipariş; contract_end = teslim son tarihi) | reddedildi
---      Teminat, numune ve iş artışı/eksiltmesi yoktur; her kalemin bölgesi vardır.
+--      Teminat, numune ve iş artışı/eksiltmesi yoktur; her kalemin istendiği şehir vardır (region).
 -- GS:  acik -> onaylandi             (sipariş zaten alınmıştır; reddedilmez, aranmaz)
 create type public.record_status as enum (
   'acik',
@@ -126,7 +126,7 @@ create table public.records (
   prices_entered_at timestamptz,          -- verdiğimiz fiyatlar girildi
   contract_start date,                    -- sözleşme imza tarihi
   contract_end date,                      -- hastanenin tüm ürünleri alacağı son tarih
-  contract_alarm_sent_at timestamptz,     -- son ay bildirimi gönderildi
+  contract_alarm_sent_at timestamptz,     -- son ay (DMO: son 7 gün) bildirimi gönderildi
   last_reminded_at timestamptz,
   created_by uuid references public.profiles (id) on delete set null default auth.uid(),
   created_at timestamptz not null default now(),
@@ -155,7 +155,7 @@ create table public.record_lines (
   approved boolean,              -- null: sonuç girilmedi
   approved_qty numeric(14, 2) check (approved_qty is null or approved_qty >= 0),
   contract_qty numeric(14, 2),   -- ihale: sözleşmedeki ilk miktar (iş artışı/eksiltmesi en fazla %20)
-  region text,                   -- DMO ihalesi: kalemin bölgesi
+  region text,                   -- DMO ihalesi: ürünün istendiği şehir
   created_at timestamptz not null default now()
 );
 
@@ -430,7 +430,7 @@ begin
     if not found then
       raise exception 'Kayıt bulunamadı.';
     end if;
-    -- Sonuçlanmış ihalede kalem eklenip silinemez, miktar sonuç adımından değişir; ad, birim ve bölge düzeltilebilir.
+    -- Sonuçlanmış ihalede kalem eklenip silinemez, miktar sonuç adımından değişir; ad, birim ve şehir düzeltilebilir.
     if v_decided then
       if exists (select 1 from jsonb_array_elements(p_lines) x where coalesce(x ->> 'id', '') = '')
          or exists (select 1 from record_lines l where l.record_id = v_id
@@ -439,7 +439,7 @@ begin
       end if;
       for v_line in select * from jsonb_array_elements(p_lines) loop
         if v_type = 'dmo_ihalesi' and coalesce(trim(v_line ->> 'region'), '') = '' then
-          raise exception 'Her ürün için bölge girilmelidir.';
+          raise exception 'Her ürün için şehir girilmelidir.';
         end if;
         update record_lines set
           product_name = trim(v_line ->> 'product_name'),
@@ -460,7 +460,7 @@ begin
       raise exception 'Birim fiyat girilmelidir.';
     end if;
     if v_type = 'dmo_ihalesi' and coalesce(trim(v_line ->> 'region'), '') = '' then
-      raise exception 'Her ürün için bölge girilmelidir.';
+      raise exception 'Her ürün için şehir girilmelidir.';
     end if;
     v_line_id := null;
     if coalesce(v_line ->> 'id', '') <> '' then

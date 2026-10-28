@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendToAll } from "@/lib/push";
 import { CONTRACT_ALARM_HOUR, isExtendedTime, isWorkingTime, istanbulHour, REMINDER_INTERVAL_MS } from "@/lib/workhours";
 import { todayIstanbul } from "@/lib/format";
-import { daysUntil, tenderAt, tenderCountdown } from "@/lib/types";
+import { alarmDays, daysUntil, tenderAt, tenderCountdown, type RecordType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -126,15 +126,15 @@ async function handle(request: NextRequest) {
     });
   }
 
-  // Sözleşmesinin son ayındaki ihaleler: kalan ürünler için hastaneyle iletişime geçilmeli.
-  // Son ayın her günü saat 14:00'te bir kez bildirilir (contract_alarm_sent_at bugünün tarihinden önceyse).
+  // Sözleşmesinin son ayındaki ihaleler ve teslim süresinin son 7 günündeki DMO siparişleri: kalan ürünler için hastaneyle iletişime geçilmeli.
+  // Her gün saat 14:00'te bir kez bildirilir (contract_alarm_sent_at bugünün tarihinden önceyse).
   let alarmIds: string[] = [];
   if (force || istanbulHour() >= CONTRACT_ALARM_HOUR) {
     const todayStart = new Date(`${today}T00:00:00+03:00`).toISOString();
     const { data: contracts, error: contractError } = await admin
       .from("records")
-      .select("id, hospital, file_no, contract_end")
-      .eq("type", "ihale_siparisi")
+      .select("id, type, hospital, file_no, contract_end")
+      .in("type", ["ihale_siparisi", "dmo_ihalesi"])
       .eq("status", "onaylandi")
       .or(`contract_alarm_sent_at.is.null,contract_alarm_sent_at.lt.${todayStart}`)
       .gte("contract_end", today)
@@ -149,13 +149,16 @@ async function handle(request: NextRequest) {
           contracts.map((c) => c.id),
         );
       const open = new Set((prog ?? []).filter((p) => Number(p.remaining) > 0).map((p) => p.record_id));
-      const alarms = contracts.filter((c) => open.has(c.id));
+      const alarms = contracts.filter((c) => open.has(c.id) && daysUntil(c.contract_end!, today) <= alarmDays(c.type as RecordType));
       alarmIds = alarms.map((c) => c.id);
       for (const c of alarms) {
         const left = daysUntil(c.contract_end!, today);
+        const dmo = c.type === "dmo_ihalesi";
         payloads.push({
-          title: `Sözleşme son ayında: ${c.hospital}`,
-          body: `${left ? `${left} gün kaldı` : "Bugün son gün"}. Kalan ürünleri hastanenin istemesi için iletişime geçin.`,
+          title: dmo ? `DMO teslim süresi bitiyor: ${c.hospital}` : `Sözleşme son ayında: ${c.hospital}`,
+          body: dmo
+            ? `${left ? `${left} gün kaldı` : "Bugün son gün"}. Kalan ürünlerin teslimini tamamlayın.`
+            : `${left ? `${left} gün kaldı` : "Bugün son gün"}. Kalan ürünleri hastanenin istemesi için iletişime geçin.`,
           url: `/kayit/${c.id}`,
           tag: `sozlesme-${c.id}`,
         });

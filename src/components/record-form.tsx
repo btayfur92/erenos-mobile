@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { saveRecord, type LineInput, type RecordInput } from "@/app/(app)/actions";
-import { CURRENCIES, isTenderType, UNITS, type RecordType } from "@/lib/types";
+import { CURRENCIES, DMO_CITIES, isTenderType, UNITS, type RecordType } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { normalizePhone, PHONE_ERROR, phoneHint } from "@/lib/phone";
 
@@ -45,7 +45,7 @@ export function RecordForm({
 }: {
   initial?: Partial<Omit<RecordInput, "lines">> & { lines?: LineInput[] };
   lockedType?: boolean;
-  /** Sonuçlanmış ihale: kalem eklenip silinemez, miktar değişmez (sonuç adımından değişir); ad, birim, bölge düzeltilebilir. */
+  /** Sonuçlanmış ihale: kalem eklenip silinemez, miktar değişmez (sonuç adımından değişir); ad, birim, şehir düzeltilebilir. */
   lockedLines?: boolean;
 }) {
   const router = useRouter();
@@ -61,7 +61,7 @@ export function RecordForm({
   const [phoneMsg, setPhoneMsg] = useState("");
   const gs = type === "genel_siparis";
   const tender = isTenderType(type); // ihale ve DMO ihalesinde fiyat bu formda girilmez
-  const dmo = type === "dmo_ihalesi"; // DMO: her kalemin bölgesi girilir
+  const dmo = type === "dmo_ihalesi"; // DMO: her kalemin istendiği şehir girilir
   const [lines, setLines] = useState<LineDraft[]>(
     initial?.lines?.length
       ? initial.lines.map((l) => ({
@@ -120,7 +120,7 @@ export function RecordForm({
     if (noRegion) {
       setBad(`r-${noRegion.key}`);
       document.getElementById(`r-${noRegion.key}`)?.focus();
-      setError("Her ürün için bölge girin.");
+      setError("Her ürün için şehir girin.");
       return;
     }
     const wrong = lines.find((l) => l.product_name.trim() && (!(parseNum(l.quantity) > 0) || (!tender && !(parseNum(l.unit_price) >= 0))));
@@ -327,8 +327,8 @@ export function RecordForm({
                     value={l.region}
                     onChange={(e) => (touched(`r-${l.key}`), update(l.key, { region: e.target.value }))}
                     className="input"
-                    placeholder="Bölge (ör. 1. Bölge)"
-                    aria-label="Bölge"
+                    placeholder="Şehir (ör. Ankara, İstanbul 1. Bölge)"
+                    aria-label="Şehir"
                     list="dmo-regions"
                   />
                 )}
@@ -367,7 +367,7 @@ export function RecordForm({
         </div>
         {dmo && (
           <datalist id="dmo-regions">
-            {[...new Set(lines.map((l) => l.region.trim()).filter(Boolean))].map((r) => (
+            {[...new Set([...lines.map((l) => l.region.trim()).filter(Boolean), ...DMO_CITIES])].map((r) => (
               <option key={r} value={r} />
             ))}
           </datalist>

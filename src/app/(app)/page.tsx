@@ -32,6 +32,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const d = dParam ?? (f === "ym" ? "bekle" : tf ? "surec" : "onay");
   const today = todayIstanbul();
   const monthAhead = new Date(Date.parse(today) + 30 * 86_400_000).toISOString().slice(0, 10);
+  const weekAhead = new Date(Date.parse(today) + 7 * 86_400_000).toISOString().slice(0, 10);
   const resolved = d === "red" ? "reddedildi" : d === "bekle" && f === "ym" ? "acik" : "onaylandi";
   const { supabase, user, profile } = await requireUser();
 
@@ -44,12 +45,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     .limit(300);
 
   // Gündem: henüz sonuçlanmamış doğrudan teminler ve ihaleler, onay bekleyen genel satışlar (DT hiç "acik" olmaz, GS hiç aranmaz)
-  // ve sözleşmesinin son ayına girmiş ihaleler (kırmızı çerçeveli).
+  // ve sözleşmesinin son ayına girmiş ihaleler ile teslim süresinin son 7 gününe girmiş DMO siparişleri (kırmızı çerçeveli).
   if (f === "gundem")
     query = query
       .in("type", ["dogrudan_temin", "genel_siparis", "ihale_siparisi", "dmo_ihalesi"])
       .or(
-        `status.in.(arama_bekliyor,arandi,numune_istendi,numune_gonderildi,acik,ihale_bekliyor),and(type.eq.ihale_siparisi,status.eq.onaylandi,contract_end.lte.${monthAhead})`,
+        `status.in.(arama_bekliyor,arandi,numune_istendi,numune_gonderildi,acik,ihale_bekliyor),and(type.eq.ihale_siparisi,status.eq.onaylandi,contract_end.lte.${monthAhead}),and(type.eq.dmo_ihalesi,status.eq.onaylandi,contract_end.lte.${weekAhead})`,
       );
   if (tf) {
     query = query.eq("type", f === "dmo" ? "dmo_ihalesi" : "ihale_siparisi");

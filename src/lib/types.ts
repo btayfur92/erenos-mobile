@@ -3,7 +3,7 @@ export type RecordType = "yaklasik_maliyet" | "dogrudan_temin" | "ihale_siparisi
 /** İhale ve DMO ihalesi: tarihli ihale, sonradan girilen fiyatlar, rakip fiyatları, sözleşme/sipariş süresi. */
 export const isTenderType = (type: RecordType) => type === "ihale_siparisi" || type === "dmo_ihalesi";
 
-/** Kalem adı; DMO ihalesinde bölgesiyle ("Eldiven · 2. Bölge"). */
+/** Kalem adı; DMO ihalesinde şehriyle ("Eldiven · Ankara"). DMO şehri `region` sütununda tutulur. */
 export const lineName = (l: { product_name: string; region?: string | null }) =>
   l.region ? `${l.product_name} · ${l.region}` : l.product_name;
 
@@ -31,7 +31,7 @@ export interface RecordLine {
   approved: boolean | null;
   approved_qty: number | null;
   contract_qty: number | null; // ihale: sözleşmedeki ilk miktar
-  region: string | null; // DMO ihalesi: kalemin bölgesi
+  region: string | null; // DMO ihalesi: ürünün istendiği şehir (ör. Ankara, İstanbul 1. Bölge)
 }
 
 export interface SalesRecord {
@@ -239,15 +239,105 @@ export function daysUntil(date: string, today: string) {
   return Math.round((Date.parse(date.slice(0, 10)) - Date.parse(today)) / 86_400_000);
 }
 
-/** Sözleşmeli ihale son aya girdi mi (bitişe 30 gün ya da daha az kaldı)? */
+/** Bitiş alarmının başladığı gün sayısı: ihale sözleşmesinde son ay, DMO teslim süresinde son 7 gün. */
+export const alarmDays = (type: RecordType) => (type === "dmo_ihalesi" ? 7 : 30);
+
+/** Sözleşmeli ihale son ayına ya da siparişli DMO teslim süresinin son 7 gününe girdi mi? */
 export function inLastMonth(record: Pick<SalesRecord, "type" | "status" | "contract_end">, today: string) {
   return (
-    record.type === "ihale_siparisi" &&
+    isTenderType(record.type) &&
     record.status === "onaylandi" &&
     !!record.contract_end &&
-    daysUntil(record.contract_end, today) <= 30
+    daysUntil(record.contract_end, today) <= alarmDays(record.type)
   );
 }
+
+/** DMO şehir önerileri (serbest yazı da girilebilir). */
+export const DMO_CITIES = [
+  "Adana",
+  "Adıyaman",
+  "Afyonkarahisar",
+  "Ağrı",
+  "Aksaray",
+  "Amasya",
+  "Ankara",
+  "Antalya",
+  "Ardahan",
+  "Artvin",
+  "Aydın",
+  "Balıkesir",
+  "Bartın",
+  "Batman",
+  "Bayburt",
+  "Bilecik",
+  "Bingöl",
+  "Bitlis",
+  "Bolu",
+  "Burdur",
+  "Bursa",
+  "Çanakkale",
+  "Çankırı",
+  "Çorum",
+  "Denizli",
+  "Diyarbakır",
+  "Düzce",
+  "Edirne",
+  "Elazığ",
+  "Erzincan",
+  "Erzurum",
+  "Eskişehir",
+  "Gaziantep",
+  "Giresun",
+  "Gümüşhane",
+  "Hakkari",
+  "Hatay",
+  "Iğdır",
+  "Isparta",
+  "İstanbul 1. Bölge",
+  "İstanbul 2. Bölge",
+  "İstanbul 3. Bölge",
+  "İzmir",
+  "Kahramanmaraş",
+  "Karabük",
+  "Karaman",
+  "Kars",
+  "Kastamonu",
+  "Kayseri",
+  "Kilis",
+  "Kırıkkale",
+  "Kırklareli",
+  "Kırşehir",
+  "Kocaeli",
+  "Konya",
+  "Kütahya",
+  "Malatya",
+  "Manisa",
+  "Mardin",
+  "Mersin",
+  "Muğla",
+  "Muş",
+  "Nevşehir",
+  "Niğde",
+  "Ordu",
+  "Osmaniye",
+  "Rize",
+  "Sakarya",
+  "Samsun",
+  "Şanlıurfa",
+  "Siirt",
+  "Sinop",
+  "Sivas",
+  "Şırnak",
+  "Tekirdağ",
+  "Tokat",
+  "Trabzon",
+  "Tunceli",
+  "Uşak",
+  "Van",
+  "Yalova",
+  "Yozgat",
+  "Zonguldak",
+];
 
 /** İhale saati "HH:MM" (girilmemişse 09:00). */
 export function tenderTime(time: string | null | undefined) {

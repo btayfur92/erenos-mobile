@@ -14,7 +14,7 @@ export function RecordCard({
   record: SalesRecord;
   progress: Map<string, LineProgress>;
   rates: Record<string, number> | null;
-  alarm?: boolean; // ihale sözleşmesi son ayda: kırmızı çerçeve
+  alarm?: boolean; // ihale sözleşmesi son ayda / DMO teslim süresi son 7 günde: kırmızı çerçeve
 }) {
   const lines = [...(record.record_lines ?? [])].sort((a, b) => a.sort_order - b.sort_order);
   const approvedLines = lines.filter((l) => l.approved);
@@ -29,7 +29,8 @@ export function RecordCard({
     <Link href={`/kayit/${record.id}`} className={`card block p-4 transition active:scale-[0.99] ${red ? "ring-2 ring-accent-500" : ""}`}>
       {red && record.contract_end && (
         <p className="-mx-4 -mt-4 mb-3 flex items-center gap-1.5 rounded-t-2xl bg-accent-600 px-4 py-1.5 text-[13px] font-semibold text-white">
-          <Siren size={15} /> Sözleşme son ayında · {Math.max(daysUntil(record.contract_end, today), 0)} gün kaldı
+          <Siren size={15} /> {dmo ? "Teslim süresi bitiyor" : "Sözleşme son ayında"} · {Math.max(daysUntil(record.contract_end, today), 0)}{" "}
+          gün kaldı
         </p>
       )}
       <div className="flex items-center justify-between gap-2">
