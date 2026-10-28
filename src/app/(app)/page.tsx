@@ -37,7 +37,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     .limit(300);
 
   // Gündem: henüz sonuçlanmamış doğrudan teminler ve onay bekleyen genel satışlar (DT hiç "acik" olmaz, GS hiç aranmaz).
-  if (f === "gundem") query = query.in("type", ["dogrudan_temin", "genel_siparis"]).in("status", ["arama_bekliyor", "arandi", "acik"]);
+  if (f === "gundem")
+    query = query
+      .in("type", ["dogrudan_temin", "genel_siparis"])
+      .in("status", ["arama_bekliyor", "arandi", "numune_istendi", "numune_gonderildi", "acik"]);
   if (f === "arama") query = query.eq("status", "arama_bekliyor");
   if (f === "dt") query = query.eq("type", "dogrudan_temin").eq("status", resolved);
   if (f === "gs") query = query.eq("type", "genel_siparis").eq("status", "onaylandi");

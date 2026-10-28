@@ -17,11 +17,15 @@ create type public.record_type as enum (
 
 -- YM:  acik -> onaylandi | reddedildi   (yalnızca takip amaçlı)
 -- DT:  arama_bekliyor -> arandi -> onaylandi | reddedildi
+--      Hastane sonuçtan önce numune isteyebilir (isteğe bağlı adım):
+--      arama_bekliyor | arandi -> numune_istendi -> numune_gonderildi -> onaylandi | reddedildi
 -- GS:  acik -> onaylandi             (sipariş zaten alınmıştır; reddedilmez, aranmaz)
 create type public.record_status as enum (
   'acik',
   'arama_bekliyor',
   'arandi',
+  'numune_istendi',
+  'numune_gonderildi',
   'onaylandi',
   'reddedildi'
 );
@@ -104,13 +108,17 @@ create table public.records (
   converted_record_id uuid references public.records (id) on delete set null,
   result_at timestamptz,
   result_note text,
+  sample_requested_at timestamptz,        -- numune istendiği an (DT)
+  sample_note text,
+  sample_sent_at timestamptz,             -- numune gönderildiği an
+  sample_sent_by uuid references public.profiles (id) on delete set null,
   last_reminded_at timestamptz,
   created_by uuid references public.profiles (id) on delete set null default auth.uid(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint records_status_matches_type check (
     (type = 'yaklasik_maliyet' and status in ('acik', 'onaylandi', 'reddedildi'))
-    or (type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'onaylandi', 'reddedildi'))
+    or (type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'numune_istendi', 'numune_gonderildi', 'onaylandi', 'reddedildi'))
     or (type = 'genel_siparis' and status in ('acik', 'onaylandi'))
     or (type = 'ihale_siparisi')
   )
@@ -145,6 +153,19 @@ create table public.call_logs (
 );
 
 create index call_logs_record_idx on public.call_logs (record_id, created_at desc);
+
+-- DT'de hastanenin istediği numuneler. Kayıt düzenlenince kalemler yeniden yazıldığı için ürün adı ve birim
+-- burada ayrıca saklanır.
+create table public.sample_items (
+  id uuid primary key default gen_random_uuid(),
+  record_id uuid not null references public.records (id) on delete cascade,
+  sort_order int not null default 0,
+  product_name text not null check (length(trim(product_name)) > 0),
+  quantity numeric(14, 2) not null check (quantity > 0),
+  unit text not null default 'Adet'
+);
+
+create index sample_items_record_idx on public.sample_items (record_id, sort_order);
 
 create table public.shipments (
   id uuid primary key default gen_random_uuid(),
@@ -393,6 +414,63 @@ begin
 end;
 $$;
 
+-- Numune talebi (ilk giriş ya da numune gönderilmeden önce düzeltme).
+-- p_items: [{product_name, quantity, unit}]. Talep girilince arama hatırlatmaları durur.
+create or replace function public.request_sample(p_record_id uuid, p_note text, p_items jsonb)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_item jsonb;
+  v_i int := 0;
+begin
+  if not exists (
+    select 1 from records
+    where id = p_record_id and type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'numune_istendi')
+  ) then
+    raise exception 'Bu kayıt için numune talebi girilemez.';
+  end if;
+  if jsonb_array_length(coalesce(p_items, '[]'::jsonb)) = 0 then
+    raise exception 'İstenen en az bir numune seçilmelidir.';
+  end if;
+
+  delete from sample_items where record_id = p_record_id;
+  for v_item in select * from jsonb_array_elements(p_items) loop
+    if coalesce((v_item ->> 'quantity')::numeric, 0) <= 0 then
+      raise exception 'Numune miktarı sıfırdan büyük olmalıdır.';
+    end if;
+    insert into sample_items (record_id, sort_order, product_name, quantity, unit)
+    values (p_record_id, v_i, trim(v_item ->> 'product_name'), (v_item ->> 'quantity')::numeric,
+            coalesce(nullif(trim(v_item ->> 'unit'), ''), 'Adet'));
+    v_i := v_i + 1;
+  end loop;
+
+  update records
+  set sample_requested_at = case when status = 'numune_istendi' then sample_requested_at else now() end,
+      sample_note = nullif(trim(p_note), ''),
+      status = 'numune_istendi'
+  where id = p_record_id;
+end;
+$$;
+
+create or replace function public.mark_sample_sent(p_record_id uuid)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  update records
+  set status = 'numune_gonderildi', sample_sent_at = now(), sample_sent_by = auth.uid()
+  where id = p_record_id and type = 'dogrudan_temin' and status = 'numune_istendi';
+  if not found then
+    raise exception 'Bu kayıtta gönderilmeyi bekleyen numune yok.';
+  end if;
+end;
+$$;
+
 -- DT / Genel Satış sonucu (ilk giriş veya sonradan düzeltme). Genel satış yalnızca onaylanır.
 -- p_lines (onayda): [{line_id, approved_qty}] — listede olmayan kalemler reddedilmiş sayılır.
 -- Sevkiyata aktarılmış miktarın altına inilemez.
@@ -417,7 +495,7 @@ begin
   if not exists (
     select 1 from records
     where id = p_record_id
-      and ((type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'onaylandi', 'reddedildi'))
+      and ((type = 'dogrudan_temin' and status in ('arama_bekliyor', 'arandi', 'numune_istendi', 'numune_gonderildi', 'onaylandi', 'reddedildi'))
         or (type = 'genel_siparis' and status in ('acik', 'onaylandi')))
   ) then
     raise exception 'Bu kayıt için sonuç girilemez.';
@@ -571,6 +649,7 @@ alter table public.profiles enable row level security;
 alter table public.records enable row level security;
 alter table public.record_lines enable row level security;
 alter table public.call_logs enable row level security;
+alter table public.sample_items enable row level security;
 alter table public.shipments enable row level security;
 alter table public.shipment_items enable row level security;
 alter table public.manual_shipments enable row level security;
@@ -588,6 +667,8 @@ create policy "records_all" on public.records
 create policy "record_lines_all" on public.record_lines
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 create policy "call_logs_all" on public.call_logs
+  for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
+create policy "sample_items_all" on public.sample_items
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());
 create policy "shipments_all" on public.shipments
   for all to authenticated using (public.is_active_user()) with check (public.is_active_user());

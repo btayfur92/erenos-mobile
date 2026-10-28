@@ -104,6 +104,49 @@ export async function logCall(recordId: string, note: string, keepReminding: boo
   return { ok: true };
 }
 
+export interface SampleInput {
+  product_name: string;
+  quantity: number;
+  unit: string;
+}
+
+/** Hastanenin istediği numune (sonuçtan önce, isteğe bağlı adım). Gönderilene kadar düzeltilebilir. */
+export async function requestSample(recordId: string, note: string, items: SampleInput[]): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (!items.length) return { ok: false, error: "İstenen en az bir numune seçin." };
+  if (items.some((i) => !(i.quantity > 0))) return { ok: false, error: "Numune miktarı sıfırdan büyük olmalı." };
+  const { data: before } = await supabase.from("records").select("status, hospital, file_no").eq("id", recordId).single();
+  const { error } = await supabase.rpc("request_sample", { p_record_id: recordId, p_note: note, p_items: items });
+  if (error) return fail(error);
+  notify(
+    {
+      title: `${before?.status === "numune_istendi" ? "Numune talebi güncellendi" : "Numune istendi"}: ${before?.hospital ?? ""}`,
+      body: items.map((i) => `${formatQty(i.quantity)} ${i.unit} ${i.product_name}`).join(", "),
+      url: `/kayit/${recordId}`,
+    },
+    user.id,
+  );
+  refresh();
+  return { ok: true };
+}
+
+export async function markSampleSent(recordId: string): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  const { error } = await supabase.rpc("mark_sample_sent", { p_record_id: recordId });
+  if (error) return fail(error);
+  const { data: rec } = await supabase.from("records").select("hospital, file_no").eq("id", recordId).single();
+  notify(
+    {
+      title: `Numune gönderildi: ${rec?.hospital ?? ""}`,
+      body: `Doğrudan temin${rec?.file_no ? ` (${rec.file_no})` : ""} için sonuç bekleniyor.`,
+      url: `/kayit/${recordId}`,
+    },
+    user.id,
+  );
+  refresh();
+  return { ok: true };
+}
+
 export async function setResult(
   recordId: string,
   approved: boolean,

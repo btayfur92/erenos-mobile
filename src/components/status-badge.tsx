@@ -4,6 +4,8 @@ const STYLE: Record<RecordStatus, string> = {
   acik: "bg-brand-50 text-brand-700",
   arama_bekliyor: "bg-accent-50 text-accent-700",
   arandi: "bg-amber-50 text-amber-700",
+  numune_istendi: "bg-violet-50 text-violet-700",
+  numune_gonderildi: "bg-sky-50 text-sky-700",
   onaylandi: "bg-emerald-50 text-emerald-700",
   reddedildi: "bg-canvas text-muted",
 };

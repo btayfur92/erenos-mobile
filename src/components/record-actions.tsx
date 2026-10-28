@@ -2,12 +2,21 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Loader2, Pencil, PhoneCall, Trash2, Truck, Undo2, XCircle } from "lucide-react";
-import { createShipment, deleteRecord, logCall, setResult, setYmStatus, type ActionResult } from "@/app/(app)/actions";
+import { CheckCircle2, FlaskConical, Loader2, Pencil, PhoneCall, Send, Trash2, Truck, Undo2, XCircle } from "lucide-react";
+import {
+  createShipment,
+  deleteRecord,
+  logCall,
+  markSampleSent,
+  requestSample,
+  setResult,
+  setYmStatus,
+  type ActionResult,
+} from "@/app/(app)/actions";
 import { Sheet } from "./sheet";
 import { formatMoney, formatPhone, formatQty, todayIstanbul } from "@/lib/format";
 import { telHref } from "@/lib/phone";
-import type { LineProgress, RecordLine, SalesRecord } from "@/lib/types";
+import type { LineProgress, RecordLine, SalesRecord, SampleItem } from "@/lib/types";
 
 function parseNum(v: string) {
   const s = v.trim().replace(/\s/g, "");
@@ -41,12 +50,14 @@ export function RecordActions({
   record,
   lines,
   progress,
+  samples = [],
 }: {
   record: SalesRecord;
   lines: RecordLine[];
   progress: Record<string, LineProgress>;
+  samples?: SampleItem[];
 }) {
-  const [sheet, setSheet] = useState<null | "call" | "result" | "ship">(null);
+  const [sheet, setSheet] = useState<null | "call" | "result" | "ship" | "sample">(null);
   const close = () => setSheet(null);
   const isDt = record.type === "dogrudan_temin";
   const isGs = record.type === "genel_siparis";
@@ -55,6 +66,7 @@ export function RecordActions({
   const decided = record.status === "onaylandi" || record.status === "reddedildi";
   const canShip = record.status === "onaylandi" && lines.some((l) => l.approved && Number(progress[l.id]?.remaining ?? 0) > 0);
   const ym = useAction();
+  const sent = useAction();
 
   return (
     <>
@@ -67,8 +79,30 @@ export function RecordActions({
             <button onClick={() => setSheet("result")} className="btn-primary">
               <CheckCircle2 size={18} /> Sonuç gir
             </button>
+            <button onClick={() => setSheet("sample")} className="btn-secondary col-span-2">
+              <FlaskConical size={18} /> Numune istendi
+            </button>
           </div>
         )}
+        {isDt && record.status === "numune_istendi" && (
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => sent.run(() => markSampleSent(record.id))} className="btn-primary" disabled={sent.pending}>
+              {sent.pending ? <Loader2 size={18} className="animate-spin" /> : <Send size={17} />} Numune gönderildi
+            </button>
+            <button onClick={() => setSheet("result")} className="btn-secondary">
+              <CheckCircle2 size={18} /> Sonuç gir
+            </button>
+            <button onClick={() => setSheet("sample")} className="btn-secondary col-span-2">
+              <Pencil size={17} /> Numune talebini düzenle
+            </button>
+          </div>
+        )}
+        {isDt && record.status === "numune_gonderildi" && (
+          <button onClick={() => setSheet("result")} className="btn-primary">
+            <CheckCircle2 size={18} /> Sonuç gir
+          </button>
+        )}
+        <ErrorText error={sent.error} />
         {canShip && (
           <button onClick={() => setSheet("ship")} className="btn-primary">
             <Truck size={18} /> Sevkiyata aktar
@@ -109,6 +143,7 @@ export function RecordActions({
       <CallSheet open={sheet === "call"} onClose={close} record={record} />
       {/* Her açılışta güncel sonuçla yeniden başlasın diye yalnızca açıkken bağlanır */}
       {sheet === "result" && <ResultSheet open onClose={close} record={record} lines={lines} progress={progress} />}
+      {sheet === "sample" && <SampleSheet open onClose={close} record={record} lines={lines} samples={samples} />}
       <ShipmentSheet open={sheet === "ship"} onClose={close} record={record} lines={lines} progress={progress} />
     </>
   );
@@ -165,6 +200,113 @@ function CallSheet({ open, onClose, record }: { open: boolean; onClose: () => vo
             )
           }
         >
+          <Spinner show={pending} /> Kaydet
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** Hastanenin istediği numuneler: kalem seçilir, miktarı girilir (zorunlu). */
+function SampleSheet({
+  open,
+  onClose,
+  record,
+  lines,
+  samples,
+}: {
+  open: boolean;
+  onClose: () => void;
+  record: SalesRecord;
+  lines: RecordLine[];
+  samples: SampleItem[];
+}) {
+  const { pending, error, run, setError } = useAction();
+  const editing = record.status === "numune_istendi";
+  const [note, setNote] = useState(editing ? (record.sample_note ?? "") : "");
+  const [sel, setSel] = useState<Record<string, { on: boolean; qty: string }>>(() =>
+    Object.fromEntries(
+      lines.map((l) => {
+        const prev = samples.find((x) => x.product_name === l.product_name);
+        return [l.id, { on: Boolean(prev), qty: prev ? String(prev.quantity).replace(".", ",") : "" }];
+      }),
+    ),
+  );
+  const [bad, setBad] = useState<string>();
+
+  function submit() {
+    const chosen = lines.filter((l) => sel[l.id]?.on);
+    if (!chosen.length) return setError("İstenen en az bir numune seçin.");
+    const wrong = chosen.find((l) => !(parseNum(sel[l.id].qty) > 0));
+    if (wrong) {
+      setSel((x) => ({ ...x, [wrong.id]: { ...x[wrong.id], qty: "" } }));
+      setBad(wrong.id);
+      document.getElementById(`sample-${wrong.id}`)?.focus();
+      return setError("Numune miktarını girin (sıfırdan büyük olmalı).");
+    }
+    const items = chosen.map((l) => ({ product_name: l.product_name, quantity: parseNum(sel[l.id].qty), unit: l.unit }));
+    run(() => requestSample(record.id, note, items), onClose);
+  }
+
+  return (
+    <Sheet open={open} onClose={onClose} title={editing ? "Numune talebini düzenle" : "Numune istendi"}>
+      <div className="space-y-4">
+        <p className="text-sm text-muted">
+          Hastanenin numune istediği ürünleri seçip miktarını girin. Kayıt sonuç girilene kadar Gündemdekiler&apos;de kalır.
+        </p>
+        <div className="space-y-2">
+          {lines.map((l) => {
+            const s = sel[l.id];
+            return (
+              <div
+                key={l.id}
+                className={`rounded-xl p-3 ring-1 transition ${s.on ? "bg-white ring-violet-200" : "bg-canvas ring-transparent"}`}
+              >
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={s.on}
+                    onChange={(e) => setSel((x) => ({ ...x, [l.id]: { ...s, on: e.target.checked } }))}
+                    className="mt-0.5 h-5 w-5 accent-brand-600"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <b className="block truncate text-[15px] font-semibold">{l.product_name}</b>
+                    <span className="text-[13px] text-muted">
+                      Teklif: {formatQty(l.quantity)} {l.unit}
+                    </span>
+                  </span>
+                </label>
+                {s.on && (
+                  <div className="mt-2.5 flex items-center gap-2 pl-8">
+                    <span className="text-[13px] text-muted">Numune</span>
+                    <input
+                      id={`sample-${l.id}`}
+                      value={s.qty}
+                      onChange={(e) => {
+                        if (bad === l.id) setBad(undefined);
+                        setSel((x) => ({ ...x, [l.id]: { ...s, qty: e.target.value } }));
+                      }}
+                      aria-invalid={bad === l.id || undefined}
+                      inputMode="decimal"
+                      className="input w-28 py-2 text-right"
+                      aria-label={`${l.product_name} numune miktarı`}
+                    />
+                    <span className="text-[13px] text-muted">{l.unit}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={2}
+          className="input resize-none"
+          placeholder="Not (isteğe bağlı). Ör. Ameliyathaneye, Ayşe Hanım'a teslim edilecek."
+        />
+        <ErrorText error={error} />
+        <button className="btn-primary w-full" disabled={pending} onClick={submit}>
           <Spinner show={pending} /> Kaydet
         </button>
       </div>

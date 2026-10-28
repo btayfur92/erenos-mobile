@@ -1,12 +1,20 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowRight, MessageSquareText, Pencil, Phone, User } from "lucide-react";
+import { ArrowRight, FlaskConical, MessageSquareText, Pencil, Phone, Send, User } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
 import { formatDate, formatDateTime, formatMoney, formatPhone, formatQty, singleTotal } from "@/lib/format";
 import { getRates } from "@/lib/fx";
 import { telHref } from "@/lib/phone";
-import { RECORD_TYPE_LABEL, type CallLog, type LineProgress, type Profile, type SalesRecord, type Shipment } from "@/lib/types";
+import {
+  RECORD_TYPE_LABEL,
+  type CallLog,
+  type LineProgress,
+  type Profile,
+  type SalesRecord,
+  type SampleItem,
+  type Shipment,
+} from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge, statusLabel } from "@/components/status-badge";
 import { ProgressBar, ProgressStats } from "@/components/line-progress";
@@ -32,7 +40,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
   const { data: record } = await supabase.from("records").select("*, record_lines(*)").eq("id", id).single<SalesRecord>();
   if (!record) notFound();
 
-  const [{ data: calls }, { data: shipments }, { data: profiles }, progressMap, linked, rates] = await Promise.all([
+  const [{ data: calls }, { data: shipments }, { data: profiles }, progressMap, linked, rates, { data: samples }] = await Promise.all([
     supabase.from("call_logs").select("*").eq("record_id", id).order("created_at", { ascending: false }).returns<CallLog[]>(),
     supabase
       .from("shipments")
@@ -49,6 +57,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
           .in("id", [record.source_record_id, record.converted_record_id].filter(Boolean) as string[])
       : Promise.resolve({ data: [] as { id: string; type: string; record_date: string }[] }),
     getRates(),
+    supabase.from("sample_items").select("*").eq("record_id", id).order("sort_order").returns<SampleItem[]>(),
   ]);
 
   const names = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name || p.username]));
@@ -150,7 +159,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                 Doğrudan temin kaydına git <ArrowRight size={16} />
               </Link>
             )}
-            <RecordActions key={record.id} record={record} lines={lines} progress={progress} />
+            <RecordActions key={record.id} record={record} lines={lines} progress={progress} samples={samples ?? []} />
           </div>
         </div>
 
@@ -197,6 +206,37 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
               {shipments.map((s) => (
                 <ShipmentCard key={s.id} shipment={s} names={names} />
               ))}
+            </div>
+          </Section>
+        )}
+
+        {record.sample_requested_at && !!samples?.length && (
+          <Section title="Numune">
+            <div className="card p-4">
+              <ul className="space-y-1.5">
+                {samples.map((x) => (
+                  <li key={x.id} className="flex items-baseline justify-between gap-3 text-[14px]">
+                    <span className="min-w-0 truncate">{x.product_name}</span>
+                    <b className="shrink-0 font-semibold tabular-nums">
+                      {formatQty(x.quantity)} <span className="font-normal text-muted">{x.unit}</span>
+                    </b>
+                  </li>
+                ))}
+              </ul>
+              {record.sample_note && <p className="mt-2 whitespace-pre-line text-[13px] text-muted">{record.sample_note}</p>}
+              <div className="mt-3 space-y-1 border-t border-line/70 pt-3 text-[13px]">
+                <p className="flex items-center gap-1.5 text-violet-700">
+                  <FlaskConical size={14} /> İstendi: {formatDateTime(record.sample_requested_at)}
+                </p>
+                {record.sample_sent_at ? (
+                  <p className="flex items-center gap-1.5 text-sky-700">
+                    <Send size={14} /> Gönderildi: {formatDateTime(record.sample_sent_at)}
+                    {record.sample_sent_by && names[record.sample_sent_by] ? ` · ${names[record.sample_sent_by]}` : ""}
+                  </p>
+                ) : (
+                  !decided && <p className="text-muted">Henüz gönderilmedi.</p>
+                )}
+              </div>
             </div>
           </Section>
         )}

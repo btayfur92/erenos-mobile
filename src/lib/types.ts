@@ -1,6 +1,6 @@
 export type RecordType = "yaklasik_maliyet" | "dogrudan_temin" | "ihale_siparisi" | "genel_siparis";
 
-export type RecordStatus = "acik" | "arama_bekliyor" | "arandi" | "onaylandi" | "reddedildi";
+export type RecordStatus = "acik" | "arama_bekliyor" | "arandi" | "numune_istendi" | "numune_gonderildi" | "onaylandi" | "reddedildi";
 
 export type ShipmentStatus = "sevk_bekliyor" | "teslim_edildi";
 
@@ -32,6 +32,10 @@ export interface SalesRecord {
   converted_record_id: string | null;
   result_at: string | null;
   result_note: string | null;
+  sample_requested_at: string | null;
+  sample_note: string | null;
+  sample_sent_at: string | null;
+  sample_sent_by: string | null;
   last_reminded_at: string | null;
   created_by: string | null;
   created_at: string;
@@ -46,6 +50,15 @@ export interface LineProgress {
   in_shipment: number;
   delivered: number;
   remaining: number;
+}
+
+export interface SampleItem {
+  id: string;
+  record_id: string;
+  sort_order: number;
+  product_name: string;
+  quantity: number;
+  unit: string;
 }
 
 export interface CallLog {
@@ -149,6 +162,8 @@ export const STATUS_LABEL: Record<RecordStatus, string> = {
   acik: "Açık",
   arama_bekliyor: "Arama bekliyor",
   arandi: "Arandı, sonuç bekleniyor",
+  numune_istendi: "Numune istendi",
+  numune_gonderildi: "Numune gönderildi, sonuç bekleniyor",
   onaylandi: "Onaylandı",
   reddedildi: "Reddedildi",
 };

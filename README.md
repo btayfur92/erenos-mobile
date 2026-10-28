@@ -82,6 +82,8 @@ curl -H "Authorization: Bearer <CRON_SECRET>" "https://<site>/mobiluygulama/api/
 | Doğrudan temin girilir | Herkese bildirim; durum **Arama bekliyor** |
 | Hastane aranmadıkça | Mesai içinde 2 saatte bir herkese hatırlatma |
 | **Arandı** + görüşme notu | Hatırlatma durur (*Tekrar aranacak* işaretlenirse devam eder) |
+| **Numune istendi** (isteğe bağlı) | Sonuçtan önce hastane numune isterse ürün ve miktar (zorunlu) seçilir, not eklenebilir; herkese bildirim, arama hatırlatması durur, kayıt *Numune istendi* olarak Gündemdekiler'de kalır (`sample_items`, `request_sample`). Gönderilene kadar düzeltilebilir |
+| **Numune gönderildi** | Gönderim zamanı ve kişisi kaydedilir, herkese bildirim; durum *Numune gönderildi, sonuç bekleniyor*. Numune istenmeden de doğrudan sonuç girilebilir |
 | **Sonuç gir → Reddedildi** | Kayıt **Reddedilenler**'e taşınır, fiyatlar saklanır |
 | **Sonuç gir → Onaylandı** | Onaylanan kalemler seçilir, miktarlar düzeltilir; kaydın toplam adedi ve tutarı artık onaylanan miktardır (teklif adedi gösterilmez). Onaylanmayan kalemler Reddedilenler'de görünür |
 | **Sevkiyata aktar** | Hastanenin istediği miktar Sevkiyat'a düşer (kalan sonra aktarılabilir) |
