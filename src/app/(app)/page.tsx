@@ -121,6 +121,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           <div className="flex items-center gap-2">
             <Link
               href="/raporlar"
+              prefetch
               className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600 shadow-sm ring-1 ring-brand-100 transition active:scale-95"
               aria-label="Raporlar"
             >
@@ -128,6 +129,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             </Link>
             <Link
               href="/animsaticilar"
+              prefetch
               className={`relative grid h-10 w-10 place-items-center rounded-xl shadow-sm transition active:scale-95 ${
                 myReminders ? "bg-brand-600 text-white shadow-brand-600/30" : "bg-brand-50 text-brand-600 ring-1 ring-brand-100"
               }`}
@@ -147,6 +149,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         {!!waitingCount && (
           <Link
             href="/?f=arama"
+            prefetch
             scroll={false}
             className="mb-4 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-accent-600 to-accent-500 px-2.5 py-1.5 text-white shadow-card"
           >
@@ -181,6 +184,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               <Link
                 key={x.key}
                 href={`/${params.size ? `?${params}` : ""}`}
+                prefetch
                 scroll={false}
                 aria-current={active ? "page" : undefined}
                 className={`chip ${active ? "bg-brand-600 text-white shadow-sm" : "bg-white text-ink/80 ring-1 ring-line"}`}
@@ -212,6 +216,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                 <Link
                   key={key}
                   href={`/?${params}`}
+                  prefetch
                   className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-[14px] font-semibold ${d === key ? activeCls : "text-muted"}`}
                 >
                   <Icon size={16} /> {label}
@@ -237,6 +242,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                 <Link
                   key={key}
                   href={`/?${params}`}
+                  prefetch
                   className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-[14px] font-semibold ${d === key ? activeCls : "text-muted"}`}
                 >
                   <Icon size={16} /> {label}

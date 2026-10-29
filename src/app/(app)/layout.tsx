@@ -1,4 +1,5 @@
 import { requireUser } from "@/lib/auth";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { BottomNav } from "@/components/bottom-nav";
 import { canSell } from "@/lib/types";
 
@@ -15,6 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-dvh pb-28">
       {children}
+      <AutoRefresh />
       <BottomNav pendingShipments={(outgoing ?? 0) + (manual ?? 0)} canAdd={canSell(profile.role)} />
     </div>
   );

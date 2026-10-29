@@ -6,6 +6,12 @@ const basePath = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").trim().replace(/\/+$/
 const nextConfig: NextConfig = {
   basePath,
   env: { NEXT_PUBLIC_BASE_PATH: basePath },
+  experimental: {
+    // Açılmış ve önceden yüklenmiş sayfalar 60 sn boyunca telefondaki önbellekten anında açılır.
+    // Kendi yaptığımız her işlem (revalidatePath) önbelleği temizler; başkalarının değişiklikleri en geç 60 sn'de
+    // ya da uygulamaya geri dönülünce (AutoRefresh) görünür.
+    staleTimes: { dynamic: 60, static: 60 },
+  },
   async headers() {
     return [
       {

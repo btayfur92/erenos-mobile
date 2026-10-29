@@ -26,6 +26,7 @@ export function BottomNav({ pendingShipments, canAdd }: { pendingShipments: numb
               {canAdd ? (
                 <Link
                   href="/yeni"
+                  prefetch
                   aria-label="Yeni kayıt"
                   className="-mt-6 grid h-14 w-14 place-items-center rounded-2xl bg-brand-600 text-white shadow-float transition active:scale-95"
                 >
@@ -40,6 +41,8 @@ export function BottomNav({ pendingShipments, canAdd }: { pendingShipments: numb
             <Link
               key={tab.href}
               href={tab.href}
+              // Sekmeler arka planda tamamen önceden yüklenir: dokununca beklemeden açılır.
+              prefetch
               className={`relative flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition ${
                 isActive(tab.href) ? "text-brand-600" : "text-muted"
               }`}

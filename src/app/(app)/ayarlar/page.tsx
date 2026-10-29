@@ -46,7 +46,7 @@ export default async function SettingsPage() {
                 : []),
             ] as const
           ).map(([href, Icon, title, text]) => (
-            <Link key={href} href={href} className="flex items-center gap-3 p-4">
+            <Link key={href} href={href} prefetch className="flex items-center gap-3 p-4">
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600">
                 <Icon size={20} />
               </span>

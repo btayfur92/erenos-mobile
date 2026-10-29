@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { AlarmClock, Check, CircleCheck, Clock, Loader2, Pencil, Plus, RotateCcw, Trash2, Users } from "lucide-react";
 import { Sheet } from "@/components/sheet";
 import { deleteReminder, saveReminder, setExtendedHours, setReminderDone } from "@/app/(app)/actions";
@@ -36,10 +36,16 @@ export function ReminderCard({ reminder: r, me, people }: { reminder: Reminder; 
   const [error, setError] = useState<string>();
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // İyimser güncelleme: Tamamlandı / Geri al / Sil sunucu yanıtı beklenmeden ekranda görünür, hata olursa geri alınır.
+  const [opt, setOpt] = useOptimistic<"" | "done" | "undo" | "gone">("");
   const names = Object.fromEntries(people.map((p) => [p.id, personName(p)]));
-  const recipients = [...(r.reminder_recipients ?? [])].sort(
-    (a, b) => Number(b.user_id === me) - Number(a.user_id === me) || (names[a.user_id] ?? "").localeCompare(names[b.user_id] ?? "", "tr"),
-  );
+  const recipients = (r.reminder_recipients ?? [])
+    .map((x) =>
+      x.user_id === me && (opt === "done" || opt === "undo") ? { ...x, done_at: opt === "done" ? new Date().toISOString() : null } : x,
+    )
+    .sort(
+      (a, b) => Number(b.user_id === me) - Number(a.user_id === me) || (names[a.user_id] ?? "").localeCompare(names[b.user_id] ?? "", "tr"),
+    );
   const mine = recipients.find((x) => x.user_id === me);
   const owner = r.created_by === me;
   const started = Date.parse(r.starts_at) <= Date.now();
@@ -49,11 +55,15 @@ export function ReminderCard({ reminder: r, me, people }: { reminder: Reminder; 
     .filter((d): d is string => !!d)
     .sort()[0]; // ilk tamamlayan yeşil görünür
 
-  const act = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
+  const act = (next: "done" | "undo" | "gone", fn: () => Promise<{ ok: boolean; error?: string }>) =>
     start(async () => {
+      setError(undefined);
+      setOpt(next);
       const res = await fn();
       if (!res.ok) setError(res.error);
     });
+
+  if (opt === "gone") return null;
 
   return (
     <div className={`card p-4 ${mine && !mine.done_at && started ? "ring-2 ring-brand-200" : ""}`}>
@@ -125,19 +135,23 @@ export function ReminderCard({ reminder: r, me, people }: { reminder: Reminder; 
             <button onClick={() => setConfirmDelete(false)} className="btn-secondary px-3 py-1.5 text-[13px]">
               Vazgeç
             </button>
-            <button onClick={() => act(() => deleteReminder(r.id))} disabled={pending} className="btn-danger px-3 py-1.5 text-[13px]">
+            <button
+              onClick={() => act("gone", () => deleteReminder(r.id))}
+              disabled={pending}
+              className="btn-danger px-3 py-1.5 text-[13px]"
+            >
               Sil
             </button>
           </div>
         </div>
       ) : mine ? (
         mine.done_at ? (
-          <button onClick={() => act(() => setReminderDone(r.id, false))} disabled={pending} className="btn-secondary mt-3 w-full">
-            {pending ? <Loader2 size={18} className="animate-spin" /> : <RotateCcw size={17} />} Geri al
+          <button onClick={() => act("undo", () => setReminderDone(r.id, false))} disabled={pending} className="btn-secondary mt-3 w-full">
+            <RotateCcw size={17} /> Geri al
           </button>
         ) : (
-          <button onClick={() => act(() => setReminderDone(r.id, true))} disabled={pending} className="btn-primary mt-3 w-full">
-            {pending ? <Loader2 size={18} className="animate-spin" /> : <CircleCheck size={18} />} Tamamlandı
+          <button onClick={() => act("done", () => setReminderDone(r.id, true))} disabled={pending} className="btn-primary mt-3 w-full">
+            <CircleCheck size={18} /> Tamamlandı
           </button>
         )
       ) : null}

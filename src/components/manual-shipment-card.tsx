@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { Sheet } from "@/components/sheet";
 import { CheckCircle2, Loader2, PackageCheck, PackageOpen, Pencil, Truck, X } from "lucide-react";
 import { cancelManualShipment, completeManualShipment } from "@/app/(app)/actions";
@@ -24,24 +24,29 @@ export function ManualShipmentCard({
   const [error, setError] = useState<string>();
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [editing, setEditing] = useState(false);
+  // İyimser güncelleme: teslim miktarı / silme sunucu yanıtı beklenmeden ekranda görünür, hata olursa geri alınır.
+  const [opt, setOpt] = useOptimistic<{ q: number; gone: boolean }>({ q: 0, gone: false });
   const gelecek = item.direction === "gelecek";
-  const done = item.status === "tamamlandi";
-  const late = !done && item.due_date < todayIstanbul();
   const doneLabel = gelecek ? "Teslim alındı" : "Teslim edildi";
   const kind = gelecek ? "Gelecek" : "Gidecek";
   const [delivering, setDelivering] = useState(false);
   // Parça teslimler: kalan miktar sevkiyat programında görünür.
   const deliveries = [...(item.manual_shipment_deliveries ?? [])].sort((a, b) => a.delivered_at.localeCompare(b.delivered_at));
-  const delivered = deliveries.reduce((t, d) => t + Number(d.quantity), 0);
+  const delivered = deliveries.reduce((t, d) => t + Number(d.quantity), 0) + opt.q;
   const total = Number(item.quantity);
+  const done = item.status === "tamamlandi" || (opt.q > 0 && delivered >= total);
+  const late = !done && item.due_date < todayIstanbul();
   const remaining = Math.max(total - delivered, 0);
 
-  const act = (fn: () => ReturnType<typeof completeManualShipment>) =>
+  const act = (next: { q: number; gone: boolean }, fn: () => ReturnType<typeof completeManualShipment>) =>
     start(async () => {
       setError(undefined);
+      setOpt(next);
       const r = await fn();
       if (!r.ok) setError(r.error);
     });
+
+  if (opt.gone) return null;
 
   return (
     <div className={`card p-4 ${done ? "opacity-90" : ""}`}>
@@ -129,14 +134,18 @@ export function ManualShipmentCard({
           <button className="btn-secondary py-2.5" onClick={() => setConfirmCancel(false)}>
             Vazgeç
           </button>
-          <button className="btn-danger py-2.5" disabled={pending} onClick={() => act(() => cancelManualShipment(item.id))}>
+          <button
+            className="btn-danger py-2.5"
+            disabled={pending}
+            onClick={() => act({ q: 0, gone: true }, () => cancelManualShipment(item.id))}
+          >
             {pending && <Loader2 size={16} className="animate-spin" />} Sil
           </button>
         </div>
       ) : (
         (canDeliver || gelecek) && (
           <button className="btn-primary mt-3 w-full py-2.5" disabled={pending} onClick={() => setDelivering(true)}>
-            {pending ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={17} />} {doneLabel}
+            <PackageCheck size={17} /> {doneLabel}
           </button>
         )
       )}
@@ -147,7 +156,7 @@ export function ManualShipmentCard({
           key={String(delivering)}
           open={delivering}
           onClose={() => setDelivering(false)}
-          id={item.id}
+          onDeliver={(q) => act({ q, gone: false }, () => completeManualShipment(item.id, q))}
           remaining={remaining}
           unit={item.unit}
           title={gelecek ? "Teslim alınan miktar" : "Teslim edilen miktar"}
@@ -167,19 +176,18 @@ function parseNum(v: string) {
 function DeliverSheet({
   open,
   onClose,
-  id,
+  onDeliver,
   remaining,
   unit,
   title,
 }: {
   open: boolean;
   onClose: () => void;
-  id: string;
+  onDeliver: (quantity: number) => void;
   remaining: number;
   unit: string;
   title: string;
 }) {
-  const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [qty, setQty] = useState(String(remaining).replace(".", ","));
   const [bad, setBad] = useState(false);
@@ -190,11 +198,9 @@ function DeliverSheet({
     const q = parseNum(qty);
     if (!(q > 0)) return reject("Miktar sıfırdan büyük olmalı.");
     if (q > remaining) return reject(`Kalan miktardan fazla girilemez (kalan: ${formatQty(remaining)} ${unit}).`);
-    start(async () => {
-      const r = await completeManualShipment(id, q);
-      if (!r.ok) return setError(r.error);
-      onClose();
-    });
+    // Panel hemen kapanır; kart sonucu anında gösterir (hata olursa kartta yazar).
+    onDeliver(q);
+    onClose();
   }
 
   return (
@@ -220,8 +226,8 @@ function DeliverSheet({
           </button>
         </div>
         {error && <p className="rounded-xl bg-accent-50 px-3.5 py-2.5 text-sm font-medium text-accent-700">{error}</p>}
-        <button className="btn-primary w-full" disabled={pending}>
-          {pending ? <Loader2 size={18} className="animate-spin" /> : <PackageCheck size={18} />} Kaydet
+        <button className="btn-primary w-full">
+          <PackageCheck size={18} /> Kaydet
         </button>
       </form>
     </Sheet>

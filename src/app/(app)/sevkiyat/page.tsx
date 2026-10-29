@@ -74,12 +74,14 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
         <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
           <Link
             href="/sevkiyat"
+            prefetch
             className={`rounded-xl py-2.5 text-center text-[14px] font-semibold ${!done ? "bg-brand-600 text-white shadow-sm" : "text-muted"}`}
           >
             Bekleyen Sevkiyatlar
           </Link>
           <Link
             href="/sevkiyat?d=tamam"
+            prefetch
             className={`rounded-xl py-2.5 text-center text-[14px] font-semibold ${done ? "bg-brand-600 text-white shadow-sm" : "text-muted"}`}
           >
             Tamamlanan Sevkiyatlar

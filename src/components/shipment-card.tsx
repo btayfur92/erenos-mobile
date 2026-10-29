@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { CheckCircle2, Loader2, PackageCheck, Truck, X } from "lucide-react";
 import { cancelShipment, markDelivered } from "@/app/(app)/actions";
@@ -25,15 +25,20 @@ export function ShipmentCard({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [confirmCancel, setConfirmCancel] = useState(false);
-  const delivered = shipment.status === "teslim_edildi";
+  // İyimser güncelleme: sonuç sunucu yanıtı beklenmeden ekranda görünür, hata olursa eski haline döner.
+  const [opt, setOpt] = useOptimistic<"" | "teslim" | "iptal">("");
+  const delivered = shipment.status === "teslim_edildi" || opt === "teslim";
   const late = !delivered && shipment.planned_date < todayIstanbul();
 
-  const act = (fn: () => ReturnType<typeof markDelivered>) =>
+  const act = (next: "teslim" | "iptal", fn: () => ReturnType<typeof markDelivered>) =>
     start(async () => {
       setError(undefined);
+      setOpt(next);
       const r = await fn();
       if (!r.ok) setError(r.error);
     });
+
+  if (opt === "iptal") return null;
 
   return (
     <div className={`card p-4 ${delivered ? "opacity-90" : ""}`}>
@@ -86,7 +91,7 @@ export function ShipmentCard({
 
       {delivered ? (
         <p className="mt-3 flex items-center gap-1.5 text-[13px] font-medium text-emerald-700">
-          <CheckCircle2 size={15} /> {shipment.delivered_at ? formatDateTime(shipment.delivered_at) : ""}
+          <CheckCircle2 size={15} /> {shipment.delivered_at ? formatDateTime(shipment.delivered_at) : "Teslim edildi"}
           {shipment.delivered_by && names?.[shipment.delivered_by] ? ` · ${names[shipment.delivered_by]}` : ""}
         </p>
       ) : confirmCancel ? (
@@ -94,14 +99,18 @@ export function ShipmentCard({
           <button className="btn-secondary py-2.5" onClick={() => setConfirmCancel(false)}>
             Vazgeç
           </button>
-          <button className="btn-danger py-2.5" disabled={pending} onClick={() => act(() => cancelShipment(shipment.id))}>
+          <button className="btn-danger py-2.5" disabled={pending} onClick={() => act("iptal", () => cancelShipment(shipment.id))}>
             {pending && <Loader2 size={16} className="animate-spin" />} Sevkiyatı iptal et
           </button>
         </div>
       ) : (
         canDeliver && (
-          <button className="btn-primary mt-3 w-full py-2.5" disabled={pending} onClick={() => act(() => markDelivered(shipment.id))}>
-            {pending ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={17} />} Teslim edildi
+          <button
+            className="btn-primary mt-3 w-full py-2.5"
+            disabled={pending}
+            onClick={() => act("teslim", () => markDelivered(shipment.id))}
+          >
+            <PackageCheck size={17} /> Teslim edildi
           </button>
         )
       )}
