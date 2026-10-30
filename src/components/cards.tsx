@@ -60,7 +60,7 @@ export function CustomerSheet({
   return (
     <Portal>
       <Sheet open onClose={onClose} title={initial ? "Kartı düzenle" : "Yeni hastane / müşteri kartı"}>
-        <div className="space-y-4" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), save())}>
+        <div className="space-y-5" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), save())}>
           <div>
             <label className="field-label" htmlFor="cc-name">
               Hastane / müşteri adı
@@ -159,7 +159,7 @@ export function ProductSheet({
   return (
     <Portal>
       <Sheet open onClose={onClose} title={initial ? "Ürün kartını düzenle" : "Yeni ürün kartı"}>
-        <div className="space-y-4" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), save())}>
+        <div className="space-y-5" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), save())}>
           <div>
             <label className="field-label" htmlFor="pc-name">
               Ürün adı
@@ -270,7 +270,10 @@ function CardPicker({
         />
       )}
       {open && !disabled && (
-        <div id={listId} className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-xl bg-white py-1 shadow-float ring-1 ring-line">
+        <div
+          id={listId}
+          className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-xl bg-white py-1 shadow-float ring-1 ring-line"
+        >
           {shown.map((o) => (
             <button
               key={o.id}
