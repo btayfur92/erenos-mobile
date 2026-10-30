@@ -26,3 +26,13 @@ select cron.schedule(
 );
 
 -- Kaldırmak için: select cron.unschedule('erenos-arama-hatirlatma');
+
+-- Uyanık tutma: her gün 08:00–21:55 (05:00–18:55 UTC) arası 5 dakikada bir sunucuya küçük bir istek gider.
+-- Sunucu uykuya geçmediği için uygulama ana ekrandan açılırken beklemez.
+select cron.schedule(
+  'erenos-uyanik-tut',
+  '*/5 5-18 * * *',
+  $$ select net.http_get(url := '<SITE>/api/cron/ping'); $$
+);
+
+-- Kaldırmak için: select cron.unschedule('erenos-uyanik-tut');
