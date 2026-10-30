@@ -20,8 +20,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // Hastane İhalesi ve DMO İhalesi: ihale tarihi/saati geçene kadar Gündem'de; sonuçlanmamışlar (ihale öncesi ve sonrası) Süreçte'de;
   // sonuç girilince Sözleşmeli / Siparişli ya da Reddedilen'de. Reddedilen bölümü bize kalmayan ürünleri kalem bazında gösterir.
   const tf = f === "ihale" || f === "dmo";
-  // Varsayılan alt sekme: Hastane İhalesi'nde Sözleşmeli (Bülent), DMO'da Süreçte, Yaklaşık Maliyet'te Bekleyenler.
-  const defaultD = f === "ym" ? "bekle" : f === "dmo" ? "surec" : "onay";
+  // Varsayılan alt sekme: Hastane İhalesi'nde Sözleşmeli, DMO'da Siparişli (Bülent), Yaklaşık Maliyet'te Bekleyenler.
+  const defaultD = f === "ym" ? "bekle" : "onay";
   const d = dParam ?? defaultD;
   const today = todayIstanbul();
   const resolved = d === "red" ? "reddedildi" : d === "bekle" && f === "ym" ? "acik" : "onaylandi";

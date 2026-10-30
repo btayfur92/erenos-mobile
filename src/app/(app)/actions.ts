@@ -125,7 +125,7 @@ export async function saveRecord(input: RecordInput): Promise<ActionResult> {
     input.type === "yaklasik_maliyet"
       ? "/?f=ym"
       : input.type === "dmo_ihalesi"
-        ? "/?f=dmo"
+        ? "/?f=dmo&d=surec"
         : input.type === "ihale_siparisi"
           ? "/?f=ihale&d=surec"
           : "/",
