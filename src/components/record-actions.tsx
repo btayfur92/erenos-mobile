@@ -32,9 +32,21 @@ import {
 } from "@/app/(app)/actions";
 import { Sheet } from "./sheet";
 import { AdjustSheet, PricesSheet } from "./tender";
-import { formatMoney, formatPhone, formatQty, todayIstanbul } from "@/lib/format";
+import { formatDate, formatMoney, formatPhone, formatQty, todayIstanbul } from "@/lib/format";
 import { telHref } from "@/lib/phone";
 import { isTenderType, lineName, type LineProgress, type RecordLine, type SalesRecord, type SampleItem } from "@/lib/types";
+
+type EndMode = "tarih" | "ay" | "gun";
+
+/** Başlangıç tarihine ay ya da gün ekler ("YYYY-MM-DD"). Ay eklerken gün ayın sonunu aşarsa ayın son günü alınır (31 Ocak + 1 ay = 28/29 Şubat). */
+function addToDate(start: string, n: number, unit: "ay" | "gun") {
+  const [y, m, d] = start.split("-").map(Number);
+  const date =
+    unit === "gun"
+      ? new Date(Date.UTC(y, m - 1, d + n))
+      : new Date(Date.UTC(y, m - 1 + n, Math.min(d, new Date(Date.UTC(y, m + n, 0)).getUTCDate())));
+  return date.toISOString().slice(0, 10);
+}
 
 function parseNum(v: string) {
   const s = v.trim().replace(/\s/g, "");
@@ -444,6 +456,11 @@ function ResultSheet({
       };
   const [contractStart, setContractStart] = useState(record.contract_start ?? todayIstanbul());
   const [contractEnd, setContractEnd] = useState(record.contract_end ?? "");
+  // Teslim son tarihi doğrudan tarih olarak ya da imza / sipariş tarihinden itibaren ay veya gün sayısıyla girilir.
+  const [endMode, setEndMode] = useState<EndMode>("tarih");
+  const [endCount, setEndCount] = useState("");
+  const count = /^\d{1,4}$/.test(endCount.trim()) ? Number(endCount.trim()) : 0;
+  const endDate = endMode === "tarih" ? contractEnd : count > 0 && contractStart ? addToDate(contractStart, count, endMode) : "";
   const [badDate, setBadDate] = useState<"start" | "end">();
   const [mode, setMode] = useState<"onay" | "red">(record.status === "reddedildi" ? "red" : "onay");
   const [note, setNote] = useState(editing ? (record.result_note ?? "") : "");
@@ -484,8 +501,9 @@ function ResultSheet({
       return setError(msg);
     };
     if (tender && !contractStart) return badField("start", T.noStart);
-    if (tender && !contractEnd) return badField("end", T.noEnd);
-    if (tender && contractEnd < contractStart) return badField("end", T.order);
+    if (tender && !endDate)
+      return badField("end", endMode === "tarih" ? T.noEnd : endMode === "ay" ? "Kaç ay olduğunu girin." : "Kaç gün olduğunu girin.");
+    if (tender && endDate < contractStart) return badField("end", T.order);
     const zero = chosen.find((c) => !(c.approved_qty > 0));
     if (zero) return reject(zero.line_id, "Onaylanan miktar sıfırdan büyük olmalı.");
     const blocked = lines.find((l) => shipped(l.id) > (chosen.find((c) => c.line_id === l.id)?.approved_qty ?? 0));
@@ -495,7 +513,7 @@ function ResultSheet({
         `${blocked.product_name} için ${formatQty(shipped(blocked.id))} ${blocked.unit} sevkiyata aktarılmış. Onaylanan miktar bunun altına inemez.`,
       );
     }
-    run(() => setResult(record.id, true, note, chosen, tender ? contractEnd : null, tender ? contractStart : null), onClose);
+    run(() => setResult(record.id, true, note, chosen, tender ? endDate : null, tender ? contractStart : null), onClose);
   }
 
   return (
@@ -533,7 +551,7 @@ function ResultSheet({
             </p>
             {tender && (
               <div className="grid grid-cols-2 gap-3">
-                <div>
+                <div className="col-span-2">
                   <label className="field-label" htmlFor="contract-start">
                     {T.start}
                   </label>
@@ -546,18 +564,67 @@ function ResultSheet({
                     className="input"
                   />
                 </div>
-                <div>
-                  <label className="field-label" htmlFor="contract-end">
-                    {T.end}
-                  </label>
-                  <input
-                    id="contract-end"
-                    type="date"
-                    value={contractEnd}
-                    onChange={(e) => (setBadDate(undefined), setContractEnd(e.target.value))}
-                    aria-invalid={badDate === "end" || undefined}
-                    className="input"
-                  />
+                <div className="col-span-2">
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <label className="text-[13px] font-medium text-muted" htmlFor="contract-end">
+                      {T.end}
+                    </label>
+                    <div
+                      className="grid grid-cols-3 gap-0.5 rounded-lg bg-canvas p-0.5"
+                      role="group"
+                      aria-label="Teslim son tarihi nasıl girilsin"
+                    >
+                      {(
+                        [
+                          ["tarih", "Tarih"],
+                          ["ay", "Ay"],
+                          ["gun", "Gün"],
+                        ] as const
+                      ).map(([k, label]) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => (setBadDate(undefined), setEndCount(""), setEndMode(k))}
+                          aria-pressed={endMode === k}
+                          className={`rounded-md px-3 py-1 text-[13px] font-semibold ${endMode === k ? "bg-white text-brand-700 shadow-sm" : "text-muted"}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {endMode === "tarih" ? (
+                    <input
+                      id="contract-end"
+                      type="date"
+                      value={contractEnd}
+                      onChange={(e) => (setBadDate(undefined), setContractEnd(e.target.value))}
+                      aria-invalid={badDate === "end" || undefined}
+                      className="input"
+                    />
+                  ) : (
+                    <>
+                      <div className="relative">
+                        <input
+                          id="contract-end"
+                          key={endMode}
+                          value={endCount}
+                          onChange={(e) => (setBadDate(undefined), setEndCount(e.target.value.replace(/\D/g, "")))}
+                          aria-invalid={badDate === "end" || undefined}
+                          inputMode="numeric"
+                          placeholder={endMode === "ay" ? "ör. 3" : "ör. 90"}
+                          className="input pr-28"
+                          autoFocus
+                        />
+                        <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[14px] text-muted">
+                          {endMode === "ay" ? "ay" : "gün"} sonra
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[13px] font-medium text-brand-700">
+                        {endDate ? `Teslim son tarihi: ${formatDate(endDate)}` : `${T.start} itibarıyla sayılır.`}
+                      </p>
+                    </>
+                  )}
                 </div>
                 <p className="col-span-2 -mt-1 text-[12px] text-muted">{T.hint}</p>
               </div>
