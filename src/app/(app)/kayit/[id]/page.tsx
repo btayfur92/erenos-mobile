@@ -113,7 +113,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
         subtitle={RECORD_TYPE_LABEL[record.type]}
         back={
           tender
-            ? `/?f=${dmo ? "dmo" : "ihale"}${record.status === "onaylandi" ? "&d=onay" : record.status === "reddedildi" ? "&d=red" : ""}`
+            ? `/?f=${dmo ? "dmo" : "ihale"}${record.status === "onaylandi" ? "&d=onay" : record.status === "reddedildi" ? "&d=red" : "&d=surec"}`
             : record.status === "reddedildi"
               ? "/?f=red"
               : gs && record.status === "onaylandi"

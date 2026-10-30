@@ -127,7 +127,7 @@ export async function saveRecord(input: RecordInput): Promise<ActionResult> {
       : input.type === "dmo_ihalesi"
         ? "/?f=dmo"
         : input.type === "ihale_siparisi"
-          ? "/?f=ihale"
+          ? "/?f=ihale&d=surec"
           : "/",
     RedirectType.replace,
   );
