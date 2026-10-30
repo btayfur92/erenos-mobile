@@ -2,6 +2,26 @@ import { TIME_ZONE } from "./config";
 
 const CURRENCY_SYMBOL: Record<string, string> = { TRY: "₺", USD: "$", EUR: "€", GBP: "£" };
 
+/**
+ * Sayı alanına yazılanı Türkçe biçime getirir: binlikler noktayla ayrılır, ondalık virgüldür ("10000,5" → "10.000,5").
+ * Virgülü olmayan klavyelerde sona yazılan nokta ondalık virgülüne çevrilir.
+ */
+export function groupNum(raw: string) {
+  let s = raw.replace(/\s/g, "");
+  if (!s.includes(",") && s.endsWith(".")) s = s.slice(0, -1) + ",";
+  s = s.replace(/[^\d,]/g, "");
+  const i = s.indexOf(",");
+  const int = (i < 0 ? s : s.slice(0, i)).replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return i < 0 ? int : `${int || "0"},${s.slice(i + 1).replace(/,/g, "")}`;
+}
+
+/** groupNum biçimindeki sayıyı okur ("10.000,5" → 10000.5). Boşsa NaN. */
+export function parseNum(v: string) {
+  const s = v.trim().replace(/\s/g, "");
+  if (!s) return NaN;
+  return Number(s.replace(/\./g, "").replace(",", "."));
+}
+
 export function formatQty(n: number | string | null | undefined) {
   return new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 2 }).format(Number(n ?? 0));
 }

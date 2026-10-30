@@ -7,7 +7,8 @@ import { CheckCircle2, Loader2, PackageCheck, PackageOpen, Pencil, Truck, X } fr
 import { cancelManualShipment, completeManualShipment } from "@/app/(app)/actions";
 import { ManualShipmentSheet } from "@/components/add-shipment";
 import { KindBadge } from "@/components/shipment-card";
-import { formatDate, formatDateTime, formatQty, todayIstanbul } from "@/lib/format";
+import { formatDate, formatDateTime, formatQty, todayIstanbul, parseNum } from "@/lib/format";
+import { NumInput } from "./num-input";
 import type { ManualShipment } from "@/lib/types";
 
 /** Elle eklenen sevkiyat kartı: gelecek (tedarikçiden bize) ya da doğrudan temine bağlı olmayan gidecek. */
@@ -169,12 +170,6 @@ export function ManualShipmentCard({
   );
 }
 
-function parseNum(v: string) {
-  const s = v.trim().replace(/\s/g, "");
-  if (!s) return NaN;
-  return Number(s.includes(",") ? s.replace(/\./g, "").replace(",", ".") : s);
-}
-
 /** Parça teslim: bu sefer teslim edilen miktar. Kalanın tamamı girilirse sevkiyat tamamlanır. */
 function DeliverSheet({
   open,
@@ -214,11 +209,10 @@ function DeliverSheet({
           programında görünmeye devam eder.
         </p>
         <div className="flex items-center gap-2">
-          <input
+          <NumInput
             value={qty}
             onChange={(e) => (setBad(false), setQty(e.target.value))}
             aria-invalid={bad || undefined}
-            inputMode="decimal"
             className="input flex-1"
             aria-label="Teslim miktarı"
             autoFocus

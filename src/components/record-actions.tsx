@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   BadgeCheck,
@@ -26,13 +26,15 @@ import {
   markSampleSent,
   requestSample,
   setGuarantee,
+  setOurPrices,
   setResult,
   setYmResult,
   type ActionResult,
 } from "@/app/(app)/actions";
+import { NumInput } from "./num-input";
 import { Sheet } from "./sheet";
 import { AdjustSheet, PricesSheet } from "./tender";
-import { formatDate, formatMoney, formatPhone, formatQty, todayIstanbul } from "@/lib/format";
+import { formatDate, formatMoney, formatPhone, formatQty, todayIstanbul, parseNum } from "@/lib/format";
 import { telHref } from "@/lib/phone";
 import { isTenderType, lineName, type LineProgress, type RecordLine, type SalesRecord, type SampleItem } from "@/lib/types";
 
@@ -48,19 +50,15 @@ function addToDate(start: string, n: number, unit: "ay" | "gun") {
   return date.toISOString().slice(0, 10);
 }
 
-function parseNum(v: string) {
-  const s = v.trim().replace(/\s/g, "");
-  if (!s) return NaN;
-  return Number(s.includes(",") ? s.replace(/\./g, "").replace(",", ".") : s);
-}
-
 function useAction() {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
-  const run = (fn: () => Promise<ActionResult>, onOk?: (r: ActionResult & { ok: true }) => void) =>
+  // optimistic: sonuç beklenmeden ekranı hemen güncelleyen adım (hata olursa kendiliğinden geri döner)
+  const run = (fn: () => Promise<ActionResult>, onOk?: (r: ActionResult & { ok: true }) => void, optimistic?: () => void) =>
     start(async () => {
       setError(undefined);
+      optimistic?.();
       const r = await fn();
       if (!r.ok) return setError(r.error);
       onOk?.(r);
@@ -104,6 +102,12 @@ export function RecordActions({
   const ym = useAction();
   const sent = useAction();
   const guarantee = useAction();
+  const prices = useAction();
+  // Teminat ve fiyat kaydı sunucu yanıtı beklenmeden ekrana yansır.
+  const [opt, setOpt] = useOptimistic(
+    { guarantee: !!record.guarantee_paid_at, prices: !!record.prices_entered_at },
+    (s, p: Partial<{ guarantee: boolean; prices: boolean }>) => ({ ...s, ...p }),
+  );
 
   return (
     <>
@@ -123,8 +127,8 @@ export function RecordActions({
         )}
         {isDmo && record.status === "ihale_bekliyor" && (
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => setSheet("prices")} className={record.prices_entered_at ? "btn-secondary" : "btn-primary"}>
-              <Tag size={17} /> {record.prices_entered_at ? "Fiyatlarımız" : "Fiyatlarımızı gir"}
+            <button onClick={() => setSheet("prices")} className={opt.prices ? "btn-secondary" : "btn-primary"}>
+              <Tag size={17} /> {opt.prices ? "Fiyatlarımız" : "Fiyatlarımızı gir"}
             </button>
             <button onClick={() => setSheet("result")} className="btn-secondary">
               <FileSignature size={17} /> Sipariş / sonuç
@@ -133,26 +137,22 @@ export function RecordActions({
         )}
         {isIhale && record.status === "ihale_bekliyor" && (
           <div className="grid grid-cols-2 gap-2">
-            {record.guarantee_paid_at ? (
-              <button
-                onClick={() => guarantee.run(() => setGuarantee(record.id, false))}
-                className="btn-secondary text-emerald-700"
-                disabled={guarantee.pending}
-                title="Geri almak için dokunun"
-              >
-                <BadgeCheck size={18} /> Teminat yatırıldı
-              </button>
-            ) : (
-              <button
-                onClick={() => guarantee.run(() => setGuarantee(record.id, true))}
-                className="btn-primary"
-                disabled={guarantee.pending}
-              >
-                {guarantee.pending ? <Loader2 size={18} className="animate-spin" /> : <Landmark size={17} />} Teminat yatırıldı
-              </button>
-            )}
-            <button onClick={() => setSheet("prices")} className={record.prices_entered_at ? "btn-secondary" : "btn-primary"}>
-              <Tag size={17} /> {record.prices_entered_at ? "Fiyatlarımız" : "Fiyatlarımızı gir"}
+            <button
+              onClick={() => {
+                const paid = !opt.guarantee;
+                guarantee.run(
+                  () => setGuarantee(record.id, paid),
+                  undefined,
+                  () => setOpt({ guarantee: paid }),
+                );
+              }}
+              className={opt.guarantee ? "btn-secondary text-emerald-700" : "btn-primary"}
+              title={opt.guarantee ? "Geri almak için dokunun" : undefined}
+            >
+              {opt.guarantee ? <BadgeCheck size={18} /> : <Landmark size={17} />} Teminat yatırıldı
+            </button>
+            <button onClick={() => setSheet("prices")} className={opt.prices ? "btn-secondary" : "btn-primary"}>
+              <Tag size={17} /> {opt.prices ? "Fiyatlarımız" : "Fiyatlarımızı gir"}
             </button>
             <button onClick={() => setSheet("sample")} className="btn-secondary">
               <FlaskConical size={18} /> Numune istendi
@@ -163,6 +163,7 @@ export function RecordActions({
           </div>
         )}
         <ErrorText error={guarantee.error} />
+        <ErrorText error={prices.error && `Fiyatlar kaydedilemedi: ${prices.error}`} />
         {sampleable && record.status === "numune_istendi" && (
           <div className="grid grid-cols-2 gap-2">
             <button onClick={() => sent.run(() => markSampleSent(record.id))} className="btn-primary" disabled={sent.pending}>
@@ -183,7 +184,7 @@ export function RecordActions({
         )}
         {isTender && (record.status === "numune_istendi" || record.status === "numune_gonderildi") && (
           <button onClick={() => setSheet("prices")} className="btn-secondary">
-            <Tag size={17} /> {record.prices_entered_at ? "Fiyatlarımız" : "Fiyatlarımızı gir"}
+            <Tag size={17} /> {opt.prices ? "Fiyatlarımız" : "Fiyatlarımızı gir"}
           </button>
         )}
         <ErrorText error={sent.error} />
@@ -235,7 +236,22 @@ export function RecordActions({
       {sheet === "result" && <ResultSheet open onClose={close} record={record} lines={lines} progress={progress} />}
       {sheet === "ym" && <YmSheet onClose={close} record={record} lines={lines} />}
       {sheet === "sample" && <SampleSheet open onClose={close} record={record} lines={lines} samples={samples} />}
-      {sheet === "prices" && <PricesSheet open onClose={close} record={record} lines={lines} />}
+      {sheet === "prices" && (
+        <PricesSheet
+          open
+          onClose={close}
+          record={record}
+          lines={lines}
+          onSubmit={(rows) => {
+            close();
+            prices.run(
+              () => setOurPrices(record.id, rows),
+              undefined,
+              () => setOpt({ prices: true }),
+            );
+          }}
+        />
+      )}
       {sheet === "adjust" && <AdjustSheet open onClose={close} record={record} lines={lines} progress={progress} />}
       <ShipmentSheet open={sheet === "ship"} onClose={close} record={record} lines={lines} progress={progress} />
     </>
@@ -373,7 +389,7 @@ function SampleSheet({
                 {s.on && (
                   <div className="mt-2.5 flex items-center gap-2 pl-8">
                     <span className="text-[13px] text-muted">Numune</span>
-                    <input
+                    <NumInput
                       id={`sample-${l.id}`}
                       value={s.qty}
                       onChange={(e) => {
@@ -381,7 +397,6 @@ function SampleSheet({
                         setSel((x) => ({ ...x, [l.id]: { ...s, qty: e.target.value } }));
                       }}
                       aria-invalid={bad === l.id || undefined}
-                      inputMode="decimal"
                       className="input w-28 py-2 text-right"
                       aria-label={`${l.product_name} numune miktarı`}
                     />
@@ -656,14 +671,13 @@ function ResultSheet({
                   {s.on && (
                     <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-8">
                       <span className="text-[13px] text-muted">{tender ? T.qty : "Onaylanan"}</span>
-                      <input
+                      <NumInput
                         value={s.qty}
                         onChange={(e) => (
                           bad === l.id && setBad(undefined),
                           setSel((x) => ({ ...x, [l.id]: { ...s, qty: e.target.value } }))
                         )}
                         aria-invalid={bad === l.id || undefined}
-                        inputMode="decimal"
                         className="input w-28 py-2 text-right"
                         aria-label={`${l.product_name} onaylanan miktar`}
                       />
@@ -783,11 +797,10 @@ function YmSheet({ onClose, record, lines }: { onClose: () => void; record: Sale
               </label>
               <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-8">
                 <span className="text-[13px] text-muted">Yaklaşık maliyet</span>
-                <input
+                <NumInput
                   value={s.ym}
                   onChange={(e) => setYm(l, e.target.value)}
                   aria-invalid={bad === l.id || undefined}
-                  inputMode="decimal"
                   className="input w-28 py-2 text-right"
                   placeholder="Birim fiyat"
                   aria-label={`${l.product_name} yaklaşık maliyet fiyatı`}
@@ -877,11 +890,10 @@ function ShipmentSheet({
                 Onaylanan {formatQty(p.approved_qty)} · Kalan <b className="text-ink">{formatQty(p.remaining)}</b> {l.unit}
               </p>
               <div className="mt-2.5 flex items-center gap-2">
-                <input
+                <NumInput
                   value={qty[l.id] ?? ""}
                   onChange={(e) => (bad === l.id && setBad(undefined), setQty((x) => ({ ...x, [l.id]: e.target.value })))}
                   aria-invalid={bad === l.id || undefined}
-                  inputMode="decimal"
                   placeholder="İstenen"
                   className="input flex-1 py-2"
                   aria-label={`${l.product_name} istenen miktar`}

@@ -5,14 +5,9 @@ import { useState, useTransition } from "react";
 import { Loader2, PackageOpen, Plus, Truck } from "lucide-react";
 import { Sheet } from "@/components/sheet";
 import { createManualShipment, updateManualShipment } from "@/app/(app)/actions";
-import { todayIstanbul } from "@/lib/format";
+import { todayIstanbul, parseNum } from "@/lib/format";
+import { NumInput } from "./num-input";
 import { UNITS, type ManualDirection, type ManualShipment } from "@/lib/types";
-
-function parseNum(v: string) {
-  const s = v.trim().replace(/\s/g, "");
-  if (!s) return NaN;
-  return Number(s.includes(",") ? s.replace(/\./g, "").replace(",", ".") : s);
-}
 
 /** Sevkiyat sayfasındaki + Ekle düğmesi: gelecek ya da doğrudan temine bağlı olmayan gidecek sevkiyat ekler. */
 export function AddShipment() {
@@ -154,11 +149,10 @@ export function ManualShipmentSheet({ open, onClose, item }: { open: boolean; on
             <label className="field-label" htmlFor="ms_qty">
               Miktar
             </label>
-            <input
+            <NumInput
               id="ms_qty"
               value={form.quantity}
               onChange={(e) => (setBadQty(false), set("quantity")(e))}
-              inputMode="decimal"
               className="input"
               aria-invalid={badQty || undefined}
               required

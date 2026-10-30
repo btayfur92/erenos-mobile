@@ -259,9 +259,12 @@ export async function setGuarantee(recordId: string, paid: boolean): Promise<Act
   const ctx = await requireRole("sell");
   if (!ctx) return { ok: false, error: NO_PERMISSION };
   const { supabase, user } = ctx;
-  const { error } = await supabase.rpc("set_guarantee", { p_record_id: recordId, p_paid: paid });
+  const [{ error }, info] = await Promise.all([
+    supabase.rpc("set_guarantee", { p_record_id: recordId, p_paid: paid }),
+    tenderInfo(supabase, recordId),
+  ]);
   if (error) return fail(error);
-  if (paid) notify({ title: "Teminat yatırıldı", body: await tenderInfo(supabase, recordId), url: `/kayit/${recordId}` }, user.id);
+  if (paid) notify({ title: "Teminat yatırıldı", body: info, url: `/kayit/${recordId}` }, user.id);
   refresh();
   return { ok: true };
 }
@@ -275,13 +278,13 @@ export async function setOurPrices(
   if (!ctx) return { ok: false, error: NO_PERMISSION };
   const { supabase, user } = ctx;
   if (lines.some((l) => !(l.unit_price >= 0))) return { ok: false, error: "Her kalem için birim fiyat girin." };
-  const { data: before } = await supabase.from("records").select("prices_entered_at, type").eq("id", recordId).single();
+  const { data: before } = await supabase.from("records").select("prices_entered_at, type, hospital, file_no").eq("id", recordId).single();
   const { error } = await supabase.rpc("set_our_prices", { p_record_id: recordId, p_lines: lines });
   if (error) return fail(error);
   notify(
     {
       title: `${before?.type === "dmo_ihalesi" ? "DMO ihalesi" : "Hastane ihalesi"} fiyatlarımız ${before?.prices_entered_at ? "güncellendi" : "girildi"}`,
-      body: await tenderInfo(supabase, recordId),
+      body: `${before?.hospital ?? ""}${before?.file_no ? ` · ${before.file_no}` : ""}`,
       url: `/kayit/${recordId}`,
     },
     user.id,

@@ -4,15 +4,10 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Loader2, Pencil, Plus, Trash2, Trophy } from "lucide-react";
 import { adjustContract, deleteCompetitor, saveCompetitor, setOurPrices, type ActionResult } from "@/app/(app)/actions";
+import { NumInput } from "./num-input";
 import { Sheet } from "./sheet";
-import { formatMoney, formatQty, toTry } from "@/lib/format";
+import { formatMoney, formatQty, toTry, parseNum } from "@/lib/format";
 import { CURRENCIES, lineName, type LineProgress, type RecordLine, type SalesRecord, type TenderBid } from "@/lib/types";
-
-function parseNum(v: string) {
-  const s = v.trim().replace(/\s/g, "");
-  if (!s) return NaN;
-  return Number(s.includes(",") ? s.replace(/\./g, "").replace(",", ".") : s);
-}
 
 const fmtInput = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 
@@ -63,7 +58,7 @@ function PriceRows({
               {formatQty(l.quantity)} {l.unit}
             </span>
             <div className="mt-2 grid grid-cols-[1fr_6.5rem] gap-2">
-              <input
+              <NumInput
                 id={`price-${l.id}`}
                 value={v.price}
                 onChange={(e) => {
@@ -71,7 +66,6 @@ function PriceRows({
                   setValues((x) => ({ ...x, [l.id]: { ...v, price: e.target.value } }));
                 }}
                 aria-invalid={bad === l.id || undefined}
-                inputMode="decimal"
                 className="input bg-white py-2"
                 placeholder={optional ? "Teklif vermedi" : "Birim fiyat"}
                 aria-label={`${l.product_name} birim fiyat`}
@@ -100,11 +94,14 @@ export function PricesSheet({
   onClose,
   record,
   lines,
+  onSubmit,
 }: {
   open: boolean;
   onClose: () => void;
   record: SalesRecord;
   lines: RecordLine[];
+  /** Verilirse kayıt bunu çağıran tarafta yapılır (panel hemen kapanır, sonuç arkada kaydedilir). */
+  onSubmit?: (rows: { line_id: string; unit_price: number; currency: string }[]) => void;
 }) {
   const { pending, error, run, setError } = useAction();
   const [values, setValues] = useState(() =>
@@ -120,14 +117,9 @@ export function PricesSheet({
       document.getElementById(`price-${wrong.id}`)?.focus();
       return setError("Her kalem için birim fiyat girin.");
     }
-    run(
-      () =>
-        setOurPrices(
-          record.id,
-          lines.map((l) => ({ line_id: l.id, unit_price: parseNum(values[l.id].price), currency: values[l.id].currency })),
-        ),
-      onClose,
-    );
+    const rows = lines.map((l) => ({ line_id: l.id, unit_price: parseNum(values[l.id].price), currency: values[l.id].currency }));
+    if (onSubmit) return onSubmit(rows);
+    run(() => setOurPrices(record.id, rows), onClose);
   }
 
   return (
@@ -420,11 +412,10 @@ export function AdjustSheet({
           </p>
         )}
         <div className="flex items-center gap-2">
-          <input
+          <NumInput
             value={qty}
             onChange={(e) => (setBad(false), setQty(e.target.value))}
             aria-invalid={bad || undefined}
-            inputMode="decimal"
             className="input flex-1"
             aria-label="Yeni miktar"
           />

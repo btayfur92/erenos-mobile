@@ -7,7 +7,8 @@ import { canGoBack } from "@/components/back-button";
 import { saveRecord, type LineInput, type RecordInput } from "@/app/(app)/actions";
 import { CURRENCIES, DMO_CITIES, isTenderType, UNITS, type Customer, type Product, type RecordType } from "@/lib/types";
 import { CustomerPicker, hasCard, ProductPicker, withCard } from "@/components/cards";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, parseNum } from "@/lib/format";
+import { NumInput } from "./num-input";
 import { normalizePhone, PHONE_ERROR, phoneHint } from "@/lib/phone";
 
 type LineDraft = {
@@ -31,14 +32,6 @@ const emptyLine = (currency = "TRY"): LineDraft => ({
   currency,
   region: "",
 });
-
-/** "1.250,50" ve "1250.50" gibi girişleri sayıya çevirir. */
-function parseNum(v: string) {
-  const s = v.trim().replace(/\s/g, "");
-  if (!s) return NaN;
-  const normalized = s.includes(",") ? s.replace(/\./g, "").replace(",", ".") : s;
-  return Number(normalized);
-}
 
 export function RecordForm({
   initial,
@@ -344,7 +337,7 @@ export function RecordForm({
                   )}
                 />
                 <div className="grid grid-cols-[1fr_auto] gap-2">
-                  <input
+                  <NumInput
                     id={`q-${l.key}`}
                     {...invalid(`q-${l.key}`)}
                     value={l.quantity}
@@ -352,7 +345,6 @@ export function RecordForm({
                     disabled={lockedLines}
                     className="input disabled:bg-canvas disabled:text-muted"
                     placeholder="Miktar"
-                    inputMode="decimal"
                     aria-label="Miktar"
                   />
                   <select
@@ -380,14 +372,13 @@ export function RecordForm({
                 )}
                 {!tender && (
                   <div className="grid grid-cols-[1fr_auto] gap-2">
-                    <input
+                    <NumInput
                       id={`p-${l.key}`}
                       {...invalid(`p-${l.key}`)}
                       value={l.unit_price}
                       onChange={(e) => (touched(`p-${l.key}`), update(l.key, { unit_price: e.target.value }))}
                       className="input"
                       placeholder="Birim fiyat"
-                      inputMode="decimal"
                       aria-label="Birim fiyat"
                     />
                     <select
