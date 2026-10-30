@@ -2,6 +2,7 @@
 
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
+import { redirect, RedirectType } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { sendToAll, type PushPayload } from "@/lib/push";
 import {
@@ -116,7 +117,20 @@ export async function saveRecord(input: RecordInput): Promise<ActionResult> {
     );
   }
   refresh();
-  return { ok: true, id: data as string };
+  // Yönlendirme sunucuda yapılır: hedef sayfa aynı yanıtla gelir (ayrı bir gidiş-dönüş beklenmez).
+  // Yeni kayıttan sonra listeye dönülür: doğrudan temin ve genel satış Gündem'e, diğerleri kendi sekmesine düşer.
+  redirect(
+    input.id
+      ? `/kayit/${input.id}`
+      : input.type === "yaklasik_maliyet"
+        ? "/?f=ym"
+        : input.type === "dmo_ihalesi"
+          ? "/?f=dmo"
+          : input.type === "ihale_siparisi"
+            ? "/?f=ihale"
+            : "/",
+    RedirectType.replace,
+  );
 }
 
 export async function logCall(recordId: string, note: string, keepReminding: boolean): Promise<ActionResult> {

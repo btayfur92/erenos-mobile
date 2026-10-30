@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { saveRecord, type LineInput, type RecordInput } from "@/app/(app)/actions";
 import { CURRENCIES, DMO_CITIES, isTenderType, UNITS, type Customer, type Product, type RecordType } from "@/lib/types";
@@ -54,7 +53,6 @@ export function RecordForm({
   /** Sonuçlanmış ihale: kalem eklenip silinemez, miktar değişmez (sonuç adımından değişir); ad, birim, şehir düzeltilebilir. */
   lockedLines?: boolean;
 }) {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   // Hatalı alan: kırmızı çerçeveyle işaretlenip temizlenir, diğer girilenler yerinde kalır.
@@ -164,11 +162,9 @@ export function RecordForm({
     setBad(undefined);
     setError(undefined);
     start(async () => {
+      // Başarılı kayıtta sunucu ilgili listeye / kayda yönlendirir; buraya yalnızca hata döner.
       const res = await saveRecord(input);
-      if (!res.ok) return setError(res.error);
-      // Yeni kayıttan sonra listeye dön: doğrudan temin ve genel satış Gündem'e, yaklaşık maliyet kendi sekmesine düşer.
-      if (initial?.id) router.replace(`/kayit/${res.id}`);
-      else router.replace(type === "yaklasik_maliyet" ? "/?f=ym" : dmo ? "/?f=dmo" : tender ? "/?f=ihale" : "/");
+      if (!res.ok) setError(res.error);
     });
   }
 
