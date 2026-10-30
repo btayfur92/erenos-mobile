@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useOptimistic, useState, useTransition } from "react";
 import { Sheet } from "@/components/sheet";
 import { CheckCircle2, Loader2, PackageCheck, PackageOpen, Pencil, Truck, X } from "lucide-react";
@@ -20,6 +21,7 @@ export function ManualShipmentCard({
   names?: Record<string, string>;
   canDeliver?: boolean;
 }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -44,6 +46,7 @@ export function ManualShipmentCard({
       setOpt(next);
       const r = await fn();
       if (!r.ok) setError(r.error);
+      else router.refresh();
     });
 
   if (opt.gone) return null;

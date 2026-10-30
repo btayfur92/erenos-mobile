@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useOptimistic, useState, useTransition } from "react";
 import { AlarmClock, Check, CircleCheck, Clock, Loader2, Pencil, Plus, RotateCcw, Trash2, Users } from "lucide-react";
 import { Sheet } from "@/components/sheet";
@@ -32,6 +33,7 @@ function defaultStart() {
 }
 
 export function ReminderCard({ reminder: r, me, people }: { reminder: Reminder; me: string; people: Person[] }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [editing, setEditing] = useState(false);
@@ -61,6 +63,7 @@ export function ReminderCard({ reminder: r, me, people }: { reminder: Reminder; 
       setOpt(next);
       const res = await fn();
       if (!res.ok) setError(res.error);
+      else router.refresh();
     });
 
   if (opt === "gone") return null;
@@ -174,6 +177,7 @@ export function ReminderEditor({ me, people }: { me: string; people: Person[] })
 }
 
 function ReminderSheet({ reminder, me, people, onClose }: { reminder?: Reminder; me: string; people: Person[]; onClose: () => void }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [bad, setBad] = useState<string>();
@@ -208,6 +212,7 @@ function ReminderSheet({ reminder, me, people, onClose }: { reminder?: Reminder;
       const r = await saveReminder({ ...form, users, id: reminder?.id });
       if (!r.ok) return setError(r.error);
       onClose();
+      router.refresh();
     });
   }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Loader2, Pencil, Plus, Trash2, Trophy } from "lucide-react";
 import { adjustContract, deleteCompetitor, saveCompetitor, setOurPrices, type ActionResult } from "@/app/(app)/actions";
@@ -16,14 +17,16 @@ function parseNum(v: string) {
 const fmtInput = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 
 function useAction() {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const run = (fn: () => Promise<ActionResult>, onOk?: () => void) =>
     start(async () => {
       setError(undefined);
       const r = await fn();
-      if (!r.ok) setError(r.error);
-      else onOk?.();
+      if (!r.ok) return setError(r.error);
+      onOk?.();
+      router.refresh();
     });
   return { pending, error, run, setError };
 }

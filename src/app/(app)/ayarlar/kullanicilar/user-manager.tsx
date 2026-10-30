@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { KeyRound, Loader2, Plus, UserCheck, UserX } from "lucide-react";
 import { Sheet } from "@/components/sheet";
@@ -58,13 +59,17 @@ export function UserManager({ users, currentUserId }: { users: Profile[]; curren
 }
 
 function useRun() {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [result, setResult] = useState<UserActionResult>();
   const run = (fn: () => Promise<UserActionResult>, onOk?: () => void) =>
     start(async () => {
       const r = await fn();
       setResult(r);
-      if (r.ok) onOk?.();
+      if (r.ok) {
+        onOk?.();
+        router.refresh();
+      }
     });
   return { pending, result, run, setResult };
 }

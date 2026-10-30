@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { CheckCircle2, Loader2, PackageCheck, Truck, X } from "lucide-react";
@@ -22,6 +23,7 @@ export function ShipmentCard({
   /** Sevkiyatı iptal edebilir (sevkiyat kullanıcısında yok). */
   canCancel?: boolean;
 }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -36,6 +38,7 @@ export function ShipmentCard({
       setOpt(next);
       const r = await fn();
       if (!r.ok) setError(r.error);
+      else router.refresh();
     });
 
   if (opt === "iptal") return null;

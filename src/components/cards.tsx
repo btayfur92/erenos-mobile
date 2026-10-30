@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { Building2, Check, Loader2, Package, Pencil, Plus, Search, Trash2 } from "lucide-react";
@@ -34,6 +35,7 @@ export function CustomerSheet({
   onSaved: (c: Customer) => void;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [phoneMsg, setPhoneMsg] = useState("");
@@ -54,6 +56,7 @@ export function CustomerSheet({
       const r = await saveCustomer({ ...f, id: initial?.id });
       if (!r.ok) return setError(r.error);
       onSaved(r.card);
+      router.refresh();
     });
   }
 
@@ -142,6 +145,7 @@ export function ProductSheet({
   onSaved: (p: Product) => void;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [f, setF] = useState({ name: initial?.name ?? name, unit: initial?.unit ?? "Adet" });
@@ -153,6 +157,7 @@ export function ProductSheet({
       const r = await saveProduct({ ...f, id: initial?.id });
       if (!r.ok) return setError(r.error);
       onSaved(r.card);
+      router.refresh();
     });
   }
 

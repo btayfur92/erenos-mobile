@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Building2, Loader2, Pencil, Plus } from "lucide-react";
 import { Sheet } from "@/components/sheet";
@@ -64,6 +65,7 @@ function MeetingSheet({
   onClose: () => void;
 }) {
   const [customers, setCustomers] = useState(initialCustomers);
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [form, setForm] = useState({
@@ -87,6 +89,7 @@ function MeetingSheet({
       const r = await saveMeeting({ ...form, id: meeting?.id });
       if (!r.ok) return setError(r.error);
       onClose();
+      router.refresh();
     });
   }
 

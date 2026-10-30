@@ -55,14 +55,16 @@ function parseNum(v: string) {
 }
 
 function useAction() {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const run = (fn: () => Promise<ActionResult>, onOk?: (r: ActionResult & { ok: true }) => void) =>
     start(async () => {
       setError(undefined);
       const r = await fn();
-      if (!r.ok) setError(r.error);
-      else onOk?.(r);
+      if (!r.ok) return setError(r.error);
+      onOk?.(r);
+      router.refresh();
     });
   return { pending, error, run, setError };
 }

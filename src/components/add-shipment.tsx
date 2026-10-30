@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Loader2, PackageOpen, Plus, Truck } from "lucide-react";
 import { Sheet } from "@/components/sheet";
@@ -28,6 +29,7 @@ export function AddShipment() {
 
 /** Elle eklenen sevkiyat formu; item verilirse o kaydı düzenler (tür değişmez). */
 export function ManualShipmentSheet({ open, onClose, item }: { open: boolean; onClose: () => void; item?: ManualShipment }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   const [badQty, setBadQty] = useState(false); // hatalı miktar: kırmızı çerçeve, yalnızca o alan temizlenir
@@ -83,6 +85,7 @@ export function ManualShipmentSheet({ open, onClose, item }: { open: boolean; on
       const r = item ? await updateManualShipment(item.id, input) : await createManualShipment(input);
       if (!r.ok) return setError(r.error);
       onClose();
+      router.refresh();
     });
   }
 
