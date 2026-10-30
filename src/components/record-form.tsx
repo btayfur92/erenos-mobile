@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { canGoBack } from "@/components/back-button";
 import { saveRecord, type LineInput, type RecordInput } from "@/app/(app)/actions";
 import { CURRENCIES, DMO_CITIES, isTenderType, UNITS, type Customer, type Product, type RecordType } from "@/lib/types";
 import { CustomerPicker, hasCard, ProductPicker, withCard } from "@/components/cards";
@@ -53,6 +55,7 @@ export function RecordForm({
   /** Sonuçlanmış ihale: kalem eklenip silinemez, miktar değişmez (sonuç adımından değişir); ad, birim, şehir düzeltilebilir. */
   lockedLines?: boolean;
 }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   // Hatalı alan: kırmızı çerçeveyle işaretlenip temizlenir, diğer girilenler yerinde kalır.
@@ -162,9 +165,11 @@ export function RecordForm({
     setBad(undefined);
     setError(undefined);
     start(async () => {
-      // Başarılı kayıtta sunucu ilgili listeye / kayda yönlendirir; buraya yalnızca hata döner.
+      // Yeni kayıtta sunucu ilgili listeye yönlendirir; düzenlemede gelinen kayıt sayfasına geri dönülür.
       const res = await saveRecord(input);
-      if (!res.ok) setError(res.error);
+      if (!res.ok) return setError(res.error);
+      if (canGoBack()) router.back();
+      else router.replace(`/kayit/${res.id}`);
     });
   }
 

@@ -1,5 +1,7 @@
 import { requireUser } from "@/lib/auth";
+import { Suspense } from "react";
 import { AutoRefresh } from "@/components/auto-refresh";
+import { NavTracker } from "@/components/back-button";
 import { BottomNav } from "@/components/bottom-nav";
 import { canSell } from "@/lib/types";
 
@@ -17,6 +19,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-dvh pb-28">
       {children}
       <AutoRefresh />
+      <Suspense>
+        <NavTracker />
+      </Suspense>
       <BottomNav pendingShipments={(outgoing ?? 0) + (manual ?? 0)} canAdd={canSell(profile.role)} />
     </div>
   );

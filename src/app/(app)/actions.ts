@@ -117,18 +117,18 @@ export async function saveRecord(input: RecordInput): Promise<ActionResult> {
     );
   }
   refresh();
-  // Yönlendirme sunucuda yapılır: hedef sayfa aynı yanıtla gelir (ayrı bir gidiş-dönüş beklenmez).
-  // Yeni kayıttan sonra listeye dönülür: doğrudan temin ve genel satış Gündem'e, diğerleri kendi sekmesine düşer.
+  // Düzenlemeden sonra form geri gelinen kayıt sayfasına döner (geçmişte aynı sayfa iki kez birikmesin).
+  if (input.id) return { ok: true, id: input.id };
+  // Yeni kayıtta yönlendirme sunucuda yapılır: hedef liste aynı yanıtla gelir (ayrı bir gidiş-dönüş beklenmez).
+  // Doğrudan temin ve genel satış Gündem'e, diğerleri kendi sekmesine düşer.
   redirect(
-    input.id
-      ? `/kayit/${input.id}`
-      : input.type === "yaklasik_maliyet"
-        ? "/?f=ym"
-        : input.type === "dmo_ihalesi"
-          ? "/?f=dmo"
-          : input.type === "ihale_siparisi"
-            ? "/?f=ihale"
-            : "/",
+    input.type === "yaklasik_maliyet"
+      ? "/?f=ym"
+      : input.type === "dmo_ihalesi"
+        ? "/?f=dmo"
+        : input.type === "ihale_siparisi"
+          ? "/?f=ihale"
+          : "/",
     RedirectType.replace,
   );
 }

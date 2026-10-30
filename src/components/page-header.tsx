@@ -1,8 +1,7 @@
 import Image from "next/image";
-import Link from "next/link";
 import { Suspense } from "react";
-import { ChevronLeft } from "lucide-react";
 import { SideMenu } from "./side-menu";
+import { BackButton } from "./back-button";
 import mark from "../../public/mark.png";
 
 export function PageHeader({
@@ -20,9 +19,7 @@ export function PageHeader({
     <header className="sticky top-0 z-30 border-b border-line/70 bg-white/85 backdrop-blur-xl pt-safe">
       <div className="mx-auto flex h-14 max-w-xl items-center gap-3 px-4">
         {back ? (
-          <Link href={back} className="-ml-2 grid h-10 w-10 place-items-center rounded-xl text-ink hover:bg-canvas" aria-label="Geri">
-            <ChevronLeft size={24} />
-          </Link>
+          <BackButton href={back} />
         ) : (
           <>
             <Suspense>
