@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Suspense } from "react";
 import { ChevronLeft } from "lucide-react";
+import { SideMenu } from "./side-menu";
 import mark from "../../public/mark.png";
 
 export function PageHeader({
@@ -22,7 +24,12 @@ export function PageHeader({
             <ChevronLeft size={24} />
           </Link>
         ) : (
-          <Image src={mark} alt="" className="h-7 w-auto" priority />
+          <>
+            <Suspense>
+              <SideMenu />
+            </Suspense>
+            <Image src={mark} alt="" className="h-7 w-auto" priority />
+          </>
         )}
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[17px] font-semibold leading-tight tracking-tight">{title}</h1>

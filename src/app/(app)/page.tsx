@@ -10,17 +10,7 @@ import { ChipStrip } from "@/components/chip-strip";
 import { RejectedList } from "@/components/rejected-list";
 import { inLastMonth, isFullyDelivered, isTenderType, tenderAt, type SalesRecord } from "@/lib/types";
 import { todayIstanbul } from "@/lib/format";
-
-const FILTERS = [
-  { key: "gundem", label: "Gündemdekiler" },
-  { key: "ihale", label: "Hastane İhalesi" },
-  { key: "dt", label: "Doğrudan Temin" },
-  { key: "dmo", label: "DMO İhalesi" },
-  { key: "gs", label: "Genel Satış" },
-  { key: "ym", label: "Yaklaşık Maliyet" },
-  { key: "arama", label: "Arama bekleyen" },
-  { key: "red", label: "Reddedilen" },
-] as const;
+import { FILTERS } from "@/lib/nav";
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ f?: string; q?: string; d?: string }> }) {
   const { f = "gundem", q = "", d: dParam } = await searchParams;
