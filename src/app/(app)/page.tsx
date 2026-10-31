@@ -103,11 +103,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // Gündem'de ihale saati geçmiş ihaleler gösterilmez (Süreçte'de kalır).
   const now = Date.now();
   if (f === "gundem") list = list.filter((r) => !isTenderType(r.type) || tenderAt(r.record_date, r.tender_time) > now);
-  // Gündem: bugüne en yakın tarih en üstte, en uzak en altta (geçmiş ya da gelecek fark etmez).
-  if (f === "gundem") {
-    const dist = (date: string) => Math.abs(Date.parse(date.slice(0, 10)) - Date.parse(today));
-    list = [...list].sort((a, b) => dist(a.record_date) - dist(b.record_date));
-  }
+  // Gündem: tarih sırası, geçmişten geleceğe (en eski üstte). Aynı günde önce eklenen üstte.
+  if (f === "gundem")
+    list = [...list].sort((a, b) => a.record_date.localeCompare(b.record_date) || a.created_at.localeCompare(b.created_at));
 
   const firstName = (profile.full_name || profile.username).split(" ")[0];
 
