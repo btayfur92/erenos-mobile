@@ -266,6 +266,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                 <div key={m.id} className="card p-4">
                   <p className="text-[12px] font-semibold text-ink/80">
                     {formatDateWithDay(m.meeting_date)} · <span className="font-normal text-muted">{m.department}</span>
+                    {m.private && <span className="ml-1.5 rounded-md bg-amber-50 px-1.5 py-px text-[11px] text-amber-700">Özel</span>}
                   </p>
                   <p className="mt-1.5 whitespace-pre-line text-[14px] leading-relaxed">{m.note}</p>
                 </div>

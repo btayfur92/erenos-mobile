@@ -201,6 +201,8 @@ export interface Meeting {
   customer_id: string | null;
   department: string;
   note: string;
+  /** Özel görüşme: yalnızca adminler görür. */
+  private: boolean;
   created_by: string | null;
   created_at: string;
   updated_by: string | null;

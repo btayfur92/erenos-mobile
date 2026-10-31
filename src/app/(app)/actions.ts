@@ -633,10 +633,12 @@ export interface MeetingInput {
   hospital: string;
   department: string;
   note: string;
+  private?: boolean;
 }
 
 export async function saveMeeting(input: MeetingInput): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
+  const { supabase, user, profile } = await requireUser();
+  if (input.private && !profile.is_admin) return { ok: false, error: NO_PERMISSION };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.meeting_date)) return { ok: false, error: "Görüşme tarihini seçin." };
   if (!input.hospital.trim()) return { ok: false, error: "Hastane adı gerekli." };
   if (!input.department.trim()) return { ok: false, error: "Servis gerekli." };
@@ -646,15 +648,19 @@ export async function saveMeeting(input: MeetingInput): Promise<ActionResult> {
     hospital: input.hospital.trim(),
     department: input.department.trim(),
     note: input.note.trim(),
+    private: !!input.private,
   };
 
   // Düzeltme: bildirim gönderilmez, kimin düzelttiği kaydedilir.
   if (input.id) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("meetings")
       .update({ ...fields, updated_by: user.id, updated_at: new Date().toISOString() })
-      .eq("id", input.id);
+      .eq("id", input.id)
+      .eq("created_by", user.id)
+      .select("id");
     if (error) return fail(error);
+    if (!data?.length) return { ok: false, error: "Görüşme notunu yalnızca giren kişi düzenleyebilir." };
     refresh();
     return { ok: true, id: input.id };
   }
@@ -662,9 +668,34 @@ export async function saveMeeting(input: MeetingInput): Promise<ActionResult> {
   const { data, error } = await supabase.from("meetings").insert(fields).select("id").single();
   if (error) return fail(error);
   const excerpt = fields.note.length > 120 ? `${fields.note.slice(0, 117)}…` : fields.note;
-  notify({ title: `Yeni görüşme notu: ${fields.hospital}`, body: `${fields.department} · ${excerpt}`, url: "/gorusmeler" }, user.id);
+  if (fields.private) {
+    // Özel görüşme bildirimi yalnızca adminlere gider.
+    const { data: admins } = await supabase.from("profiles").select("id").eq("is_admin", true).eq("active", true);
+    const ids = (admins ?? []).map((a) => a.id).filter((id) => id !== user.id);
+    if (ids.length)
+      after(async () => {
+        try {
+          await sendToAll(
+            { title: `Yeni özel görüşme: ${fields.hospital}`, body: `${fields.department} · ${excerpt}`, url: "/gorusmeler?v=ozel" },
+            { onlyUserIds: ids },
+          );
+        } catch (err) {
+          console.error("[push] bildirim gönderilemedi", err);
+        }
+      });
+  } else notify({ title: `Yeni görüşme notu: ${fields.hospital}`, body: `${fields.department} · ${excerpt}`, url: "/gorusmeler" }, user.id);
   refresh();
   return { ok: true, id: data.id };
+}
+
+/** Görüşme notunu siler (yalnızca giren kişi). */
+export async function deleteMeeting(id: string): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  const { data, error } = await supabase.from("meetings").delete().eq("id", id).eq("created_by", user.id).select("id");
+  if (error) return fail(error);
+  if (!data?.length) return { ok: false, error: "Görüşme notunu yalnızca giren kişi silebilir." };
+  refresh();
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------
