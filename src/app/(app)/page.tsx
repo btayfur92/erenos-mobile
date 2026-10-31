@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlarmClock, ChartColumn, CheckCircle2, Clock, FileSignature, FileText, Gavel, Search, XCircle } from "lucide-react";
+import { AlarmClock, ChartColumn, CheckCircle2, Clock, FileSignature, FileText, Gavel, PackageCheck, Search, XCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
 import { getRates } from "@/lib/fx";
@@ -19,12 +19,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // Genel satış onaylanana kadar Gündem'de, sonra Genel Satış sekmesinde (teslimatı sürenler üstte).
   // Hastane İhalesi ve DMO İhalesi: ihale tarihi/saati geçene kadar Gündem'de; sonuçlanmamışlar (ihale öncesi ve sonrası) Süreçte'de;
   // sonuç girilince Sözleşmeli / Siparişli ya da Reddedilen'de. Reddedilen bölümü bize kalmayan ürünleri kalem bazında gösterir.
+  // Tamamı teslim edilen ihaleler ve doğrudan teminler kendi "Tamamlanan" alt sekmesine geçer (Bülent).
   const tf = f === "ihale" || f === "dmo";
   // Varsayılan alt sekme: Hastane İhalesi'nde Sözleşmeli, DMO'da Siparişli (Bülent), Yaklaşık Maliyet'te Bekleyenler.
   const defaultD = f === "ym" ? "bekle" : "onay";
   const d = dParam ?? defaultD;
   const today = todayIstanbul();
-  const resolved = d === "red" ? "reddedildi" : d === "bekle" && f === "ym" ? "acik" : "onaylandi";
+  const resolved = d === "red" ? "reddedildi" : d === "bekle" && f === "ym" ? "acik" : "onaylandi"; // "tamam" da onaylanmış kayıtlardır
   const { supabase, user, profile } = await requireUser();
 
   let query = supabase
@@ -44,7 +45,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   if (tf) {
     query = query.eq("type", f === "dmo" ? "dmo_ihalesi" : "ihale_siparisi");
     query =
-      d === "onay"
+      d === "onay" || d === "tamam"
         ? query.eq("status", "onaylandi")
         : d === "red"
           ? query.eq("status", "reddedildi")
@@ -86,11 +87,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     ratesPromise,
   ]);
 
-  // Doğrudan Temin ve Genel Satış: tamamı teslim edilenler en alta (kendi içlerinde tarih sırası korunur).
-  // İhale: süreçtekiler en yakın ihale tarihi üstte; sözleşmeliler en yakın bitiş üstte, tamamı teslim edilenler en altta.
+  // Genel Satış: tamamı teslim edilenler en alta (kendi içlerinde tarih sırası korunur).
+  // Doğrudan Temin ve ihaleler: tamamı teslim edilenler Onaylananlar / Sözleşmeli / Siparişli'den Tamamlanan'a geçer.
+  // İhale: süreçtekiler en yakın ihale tarihi üstte; sözleşmeliler en yakın bitiş üstte.
   let list = records ?? [];
-  if (f === "gs" || f === "dt")
-    list = [...list].sort((a, b) => Number(isFullyDelivered(a, progress)) - Number(isFullyDelivered(b, progress)));
+  if ((tf || f === "dt") && (d === "onay" || d === "tamam")) list = list.filter((r) => isFullyDelivered(r, progress) === (d === "tamam"));
+  if (f === "gs") list = [...list].sort((a, b) => Number(isFullyDelivered(a, progress)) - Number(isFullyDelivered(b, progress)));
   if (tf && d === "surec") list = [...list].sort((a, b) => a.record_date.localeCompare(b.record_date));
   if (tf && d === "onay")
     list = [...list].sort(
@@ -101,6 +103,11 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // Gündem'de ihale saati geçmiş ihaleler gösterilmez (Süreçte'de kalır).
   const now = Date.now();
   if (f === "gundem") list = list.filter((r) => !isTenderType(r.type) || tenderAt(r.record_date, r.tender_time) > now);
+  // Gündem: bugüne en yakın tarih en üstte, en uzak en altta (geçmiş ya da gelecek fark etmez).
+  if (f === "gundem") {
+    const dist = (date: string) => Math.abs(Date.parse(date.slice(0, 10)) - Date.parse(today));
+    list = [...list].sort((a, b) => dist(a.record_date) - dist(b.record_date));
+  }
 
   const firstName = (profile.full_name || profile.username).split(" ")[0];
 
@@ -193,12 +200,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         </ChipStrip>
 
         {tf && (
-          <div className="mt-3 grid grid-cols-3 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
+          <div className="mt-3 grid grid-cols-4 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
             {(
               [
                 ["surec", "Süreçte", Gavel, "bg-teal-50 text-teal-700"],
                 ["onay", f === "dmo" ? "Siparişli" : "Sözleşmeli", FileSignature, "bg-emerald-50 text-emerald-700"],
                 ["red", "Reddedilen", XCircle, "bg-accent-50 text-accent-700"],
+                ["tamam", "Tamamlanan", PackageCheck, "bg-brand-50 text-brand-700"],
               ] as const
             ).map(([key, label, Icon, activeCls]) => {
               const params = new URLSearchParams({ f });
@@ -209,7 +217,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                   key={key}
                   href={`/?${params}`}
                   prefetch
-                  className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-[14px] font-semibold ${d === key ? activeCls : "text-muted"}`}
+                  className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 text-[12.5px] font-semibold ${d === key ? activeCls : "text-muted"}`}
                 >
                   <Icon size={16} /> {label}
                 </Link>
@@ -219,12 +227,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         )}
 
         {(f === "dt" || f === "ym") && (
-          <div className={`mt-3 grid gap-1 rounded-2xl bg-white p-1 ring-1 ring-line ${f === "ym" ? "grid-cols-3" : "grid-cols-2"}`}>
+          <div className="mt-3 grid grid-cols-3 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
             {(
               [
                 ...(f === "ym" ? ([["bekle", "Bekleyenler", Clock, "bg-brand-50 text-brand-700"]] as const) : []),
                 ["onay", "Onaylananlar", CheckCircle2, "bg-emerald-50 text-emerald-700"],
                 ["red", "Reddedilenler", XCircle, "bg-accent-50 text-accent-700"],
+                ...(f === "dt" ? ([["tamam", "Tamamlanan", PackageCheck, "bg-brand-50 text-brand-700"]] as const) : []),
               ] as const
             ).map(([key, label, Icon, activeCls]) => {
               const params = new URLSearchParams({ f });
@@ -235,7 +244,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                   key={key}
                   href={`/?${params}`}
                   prefetch
-                  className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-[14px] font-semibold ${d === key ? activeCls : "text-muted"}`}
+                  className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1.5 text-[12.5px] font-semibold ${d === key ? activeCls : "text-muted"}`}
                 >
                   <Icon size={16} /> {label}
                 </Link>
@@ -259,13 +268,15 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                     ? "Farklı bir arama deneyin."
                     : f === "gs"
                       ? "Onaylanan genel satışlar burada görünür."
-                      : tf && d !== "surec"
-                        ? d === "onay"
-                          ? f === "dmo"
-                            ? "Siparişi gelen DMO ihaleleri burada görünür."
-                            : "Sözleşmesi imzalanan ihaleler burada görünür."
-                          : `Reddedilen ${f === "dmo" ? "DMO ihaleleri" : "ihaleler"} burada görünür.`
-                        : "İlk kaydı alttaki + ile ekleyin."
+                      : d === "tamam"
+                        ? `Tamamı teslim edilen ${f === "dt" ? "doğrudan teminler" : f === "dmo" ? "DMO ihaleleri" : "ihaleler"} burada görünür.`
+                        : tf && d !== "surec"
+                          ? d === "onay"
+                            ? f === "dmo"
+                              ? "Siparişi gelen DMO ihaleleri burada görünür."
+                              : "Sözleşmesi imzalanan ihaleler burada görünür."
+                            : `Reddedilen ${f === "dmo" ? "DMO ihaleleri" : "ihaleler"} burada görünür.`
+                          : "İlk kaydı alttaki + ile ekleyin."
                 }
               >
                 {!term && (

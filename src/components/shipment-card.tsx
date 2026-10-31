@@ -3,8 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
-import { CheckCircle2, Loader2, PackageCheck, Truck, X } from "lucide-react";
-import { cancelShipment, markDelivered } from "@/app/(app)/actions";
+import { CheckCircle2, Loader2, PackageCheck, Truck, Undo2, X } from "lucide-react";
+import { cancelShipment, markDelivered, undoDelivered } from "@/app/(app)/actions";
 import { formatDate, formatDateTime, formatQty, todayIstanbul } from "@/lib/format";
 import { lineName, type Shipment } from "@/lib/types";
 
@@ -28,11 +28,11 @@ export function ShipmentCard({
   const [error, setError] = useState<string>();
   const [confirmCancel, setConfirmCancel] = useState(false);
   // İyimser güncelleme: sonuç sunucu yanıtı beklenmeden ekranda görünür, hata olursa eski haline döner.
-  const [opt, setOpt] = useOptimistic<"" | "teslim" | "iptal">("");
+  const [opt, setOpt] = useOptimistic<"" | "teslim" | "iptal" | "geri">("");
   const delivered = shipment.status === "teslim_edildi" || opt === "teslim";
   const late = !delivered && shipment.planned_date < todayIstanbul();
 
-  const act = (next: "teslim" | "iptal", fn: () => ReturnType<typeof markDelivered>) =>
+  const act = (next: "teslim" | "iptal" | "geri", fn: () => ReturnType<typeof markDelivered>) =>
     start(async () => {
       setError(undefined);
       setOpt(next);
@@ -41,7 +41,8 @@ export function ShipmentCard({
       else router.refresh();
     });
 
-  if (opt === "iptal") return null;
+  // Geri alınan teslim Tamamlanan listesinden hemen çıkar (bekleyenlere döner).
+  if (opt === "iptal" || opt === "geri") return null;
 
   return (
     <div className={`card p-4 ${delivered ? "opacity-90" : ""}`}>
@@ -93,10 +94,22 @@ export function ShipmentCard({
       {shipment.note && <p className="mt-2 text-[13px] text-muted">{shipment.note}</p>}
 
       {delivered ? (
-        <p className="mt-3 flex items-center gap-1.5 text-[13px] font-medium text-emerald-700">
-          <CheckCircle2 size={15} /> {shipment.delivered_at ? formatDateTime(shipment.delivered_at) : "Teslim edildi"}
-          {shipment.delivered_by && names?.[shipment.delivered_by] ? ` · ${names[shipment.delivered_by]}` : ""}
-        </p>
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <p className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-emerald-700">
+            <CheckCircle2 size={15} className="shrink-0" />{" "}
+            {shipment.delivered_at ? formatDateTime(shipment.delivered_at) : "Teslim edildi"}
+            {shipment.delivered_by && names?.[shipment.delivered_by] ? ` · ${names[shipment.delivered_by]}` : ""}
+          </p>
+          {canDeliver && shipment.status === "teslim_edildi" && (
+            <button
+              className="btn-secondary shrink-0 px-3 py-1.5 text-[13px]"
+              disabled={pending}
+              onClick={() => act("geri", () => undoDelivered(shipment.id))}
+            >
+              <Undo2 size={15} /> Geri al
+            </button>
+          )}
+        </div>
       ) : confirmCancel ? (
         <div className="mt-3 grid grid-cols-2 gap-2">
           <button className="btn-secondary py-2.5" onClick={() => setConfirmCancel(false)}>

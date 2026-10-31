@@ -411,6 +411,25 @@ export async function markDelivered(shipmentId: string): Promise<ActionResult> {
   return { ok: true };
 }
 
+/** Yanlışlıkla "Teslim edildi" denen sevkiyatı bekleyenlere geri alır. */
+export async function undoDelivered(shipmentId: string): Promise<ActionResult> {
+  const ctx = await requireRole("deliver");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
+  const { data, error } = await supabase
+    .from("shipments")
+    .update({ status: "sevk_bekliyor", delivered_at: null, delivered_by: null })
+    .eq("id", shipmentId)
+    .eq("status", "teslim_edildi")
+    .select("records(hospital)")
+    .single();
+  if (error) return fail(error);
+  const hospital = (data?.records as unknown as { hospital: string } | null)?.hospital ?? "";
+  notify({ title: "Sevkiyat teslimi geri alındı", body: hospital, url: "/sevkiyat" }, user.id);
+  refresh();
+  return { ok: true };
+}
+
 export async function cancelShipment(shipmentId: string): Promise<ActionResult> {
   const ctx = await requireRole("sell");
   if (!ctx) return { ok: false, error: NO_PERMISSION };
@@ -564,6 +583,34 @@ export async function completeManualShipment(id: string, quantity: number | null
       user.id,
     );
   }
+  refresh();
+  return { ok: true };
+}
+
+/** Elle eklenen sevkiyatta son teslim kaydını siler; tamamlanmışsa bekleyenlere döner (yanlışlıkla teslim için). */
+export async function undoManualDelivery(id: string): Promise<ActionResult> {
+  const { supabase, user, profile } = await requireUser();
+  const { data: m } = await supabase
+    .from("manual_shipments")
+    .select("direction, party, product_details, manual_shipment_deliveries(id, delivered_at)")
+    .eq("id", id)
+    .single();
+  if (!m) return { ok: false, error: "Sevkiyat bulunamadı." };
+  if (m.direction !== "gelecek" && !canDeliver(profile.role)) return { ok: false, error: NO_PERMISSION };
+  const last = [...(m.manual_shipment_deliveries ?? [])].sort((a, b) => b.delivered_at.localeCompare(a.delivered_at))[0];
+  if (!last) return { ok: false, error: "Geri alınacak teslim yok." };
+  const { error } = await supabase.from("manual_shipment_deliveries").delete().eq("id", last.id);
+  if (error) return fail(error);
+  const { error: e2 } = await supabase
+    .from("manual_shipments")
+    .update({ status: "bekliyor", completed_at: null, completed_by: null })
+    .eq("id", id);
+  if (e2) return fail(e2);
+  const verb = m.direction === "gelecek" ? "teslim alındı" : "teslim edildi";
+  notify(
+    { title: `"${verb[0].toUpperCase()}${verb.slice(1)}" geri alındı: ${m.party}`, body: m.product_details, url: "/sevkiyat" },
+    user.id,
+  );
   refresh();
   return { ok: true };
 }

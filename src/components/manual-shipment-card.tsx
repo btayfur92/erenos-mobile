@@ -3,8 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useOptimistic, useState, useTransition } from "react";
 import { Sheet } from "@/components/sheet";
-import { CheckCircle2, Loader2, PackageCheck, PackageOpen, Pencil, Truck, X } from "lucide-react";
-import { cancelManualShipment, completeManualShipment } from "@/app/(app)/actions";
+import { CheckCircle2, Loader2, PackageCheck, PackageOpen, Pencil, Truck, Undo2, X } from "lucide-react";
+import { cancelManualShipment, completeManualShipment, undoManualDelivery } from "@/app/(app)/actions";
 import { ManualShipmentSheet } from "@/components/add-shipment";
 import { KindBadge } from "@/components/shipment-card";
 import { formatDate, formatDateTime, formatQty, todayIstanbul, parseNum } from "@/lib/format";
@@ -129,10 +129,22 @@ export function ManualShipmentCard({
       {item.note && <p className="mt-2 text-[13px] text-muted">{item.note}</p>}
 
       {done ? (
-        <p className="mt-3 flex items-center gap-1.5 text-[13px] font-medium text-emerald-700">
-          <CheckCircle2 size={15} /> {doneLabel} {item.completed_at ? formatDateTime(item.completed_at) : ""}
-          {item.completed_by && names?.[item.completed_by] ? ` · ${names[item.completed_by]}` : ""}
-        </p>
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <p className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-emerald-700">
+            <CheckCircle2 size={15} className="shrink-0" /> {doneLabel} {item.completed_at ? formatDateTime(item.completed_at) : ""}
+            {item.completed_by && names?.[item.completed_by] ? ` · ${names[item.completed_by]}` : ""}
+          </p>
+          {/* Yanlışlıkla teslim: son teslim kaydı silinir, sevkiyat bekleyenlere döner. */}
+          {item.status === "tamamlandi" && (canDeliver || gelecek) && (
+            <button
+              className="btn-secondary shrink-0 px-3 py-1.5 text-[13px]"
+              disabled={pending}
+              onClick={() => act({ q: 0, gone: true }, () => undoManualDelivery(item.id))}
+            >
+              <Undo2 size={15} /> Geri al
+            </button>
+          )}
+        </div>
       ) : confirmCancel ? (
         <div className="mt-3 grid grid-cols-2 gap-2">
           <button className="btn-secondary py-2.5" onClick={() => setConfirmCancel(false)}>
