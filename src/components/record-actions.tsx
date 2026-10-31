@@ -24,6 +24,7 @@ import {
   deleteRecord,
   logCall,
   markSampleSent,
+  undoSampleSent,
   requestSample,
   setGuarantee,
   setOurPrices,
@@ -178,9 +179,15 @@ export function RecordActions({
           </div>
         )}
         {sampleable && record.status === "numune_gonderildi" && (
-          <button onClick={() => setSheet("result")} className="btn-primary">
-            {isTender ? <FileSignature size={17} /> : <CheckCircle2 size={18} />} {isTender ? "Sözleşme / sonuç" : "Sonuç gir"}
-          </button>
+          <>
+            <button onClick={() => setSheet("result")} className="btn-primary">
+              {isTender ? <FileSignature size={17} /> : <CheckCircle2 size={18} />} {isTender ? "Sözleşme / sonuç" : "Sonuç gir"}
+            </button>
+            {/* Yanlışlıkla "Numune gönderildi" dendiyse: numune istendi durumuna döner. */}
+            <button onClick={() => sent.run(() => undoSampleSent(record.id))} className="btn-secondary" disabled={sent.pending}>
+              {sent.pending ? <Loader2 size={18} className="animate-spin" /> : <Undo2 size={17} />} Numune gönderildiyi geri al
+            </button>
+          </>
         )}
         {isTender && (record.status === "numune_istendi" || record.status === "numune_gonderildi") && (
           <button onClick={() => setSheet("prices")} className="btn-secondary">

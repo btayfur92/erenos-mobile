@@ -176,6 +176,27 @@ export async function requestSample(recordId: string, note: string, items: Sampl
   return { ok: true };
 }
 
+/** Yanlışlıkla "Numune gönderildi" denen kaydı "Numune istendi"ye geri alır (numune hatırlatmaları yeniden başlar). */
+export async function undoSampleSent(recordId: string): Promise<ActionResult> {
+  const ctx = await requireRole("sell");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { supabase, user } = ctx;
+  const { data, error } = await supabase
+    .from("records")
+    .update({ status: "numune_istendi", sample_sent_at: null, sample_sent_by: null })
+    .eq("id", recordId)
+    .eq("status", "numune_gonderildi")
+    .select("hospital")
+    .single();
+  if (error) return fail(error);
+  notify(
+    { title: `Numune gönderildi geri alındı: ${data.hospital}`, body: "Numune henüz gönderilmedi.", url: `/kayit/${recordId}` },
+    user.id,
+  );
+  refresh();
+  return { ok: true };
+}
+
 export async function markSampleSent(recordId: string): Promise<ActionResult> {
   const ctx = await requireRole("sell");
   if (!ctx) return { ok: false, error: NO_PERMISSION };
