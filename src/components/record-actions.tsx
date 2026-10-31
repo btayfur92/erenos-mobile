@@ -97,25 +97,27 @@ export function RecordActions({
   const isIhale = record.type === "ihale_siparisi";
   const isDmo = record.type === "dmo_ihalesi"; // DMO: teminat, numune, iş artışı/eksiltmesi yok
   const sampleable = isDt || isIhale; // numune adımı doğrudan temin ve ihalede
-  const canCall = isDt && (record.status === "arama_bekliyor" || record.status === "arandi");
-  const decided = record.status === "onaylandi" || record.status === "reddedildi";
-  const canShip = !isYm && record.status === "onaylandi" && lines.some((l) => l.approved && Number(progress[l.id]?.remaining ?? 0) > 0);
   const ym = useAction();
   const sent = useAction();
   const guarantee = useAction();
   const prices = useAction();
   // Teminat ve fiyat kaydı sunucu yanıtı beklenmeden ekrana yansır.
   const [opt, setOpt] = useOptimistic(
-    { guarantee: !!record.guarantee_paid_at, prices: !!record.prices_entered_at },
-    (s, p: Partial<{ guarantee: boolean; prices: boolean }>) => ({ ...s, ...p }),
+    { guarantee: !!record.guarantee_paid_at, prices: !!record.prices_entered_at, status: record.status },
+    (s, p: Partial<{ guarantee: boolean; prices: boolean; status: SalesRecord["status"] }>) => ({ ...s, ...p }),
   );
+  // Numune gönderildi / geri al da sunucu yanıtı beklenmeden ekrana yansır.
+  const status = opt.status;
+  const canCall = isDt && (status === "arama_bekliyor" || status === "arandi");
+  const decided = status === "onaylandi" || status === "reddedildi";
+  const canShip = !isYm && status === "onaylandi" && lines.some((l) => l.approved && Number(progress[l.id]?.remaining ?? 0) > 0);
 
   return (
     <>
       <div className="grid gap-2">
         {canCall && (
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => setSheet("call")} className={record.status === "arama_bekliyor" ? "btn-danger" : "btn-secondary"}>
+            <button onClick={() => setSheet("call")} className={status === "arama_bekliyor" ? "btn-danger" : "btn-secondary"}>
               <PhoneCall size={18} /> Arandı
             </button>
             <button onClick={() => setSheet("result")} className="btn-primary">
@@ -126,7 +128,7 @@ export function RecordActions({
             </button>
           </div>
         )}
-        {isDmo && record.status === "ihale_bekliyor" && (
+        {isDmo && status === "ihale_bekliyor" && (
           <div className="grid grid-cols-2 gap-2">
             <button onClick={() => setSheet("prices")} className={opt.prices ? "btn-secondary" : "btn-primary"}>
               <Tag size={17} /> {opt.prices ? "Fiyatlarımız" : "Fiyatlarımızı gir"}
@@ -136,7 +138,7 @@ export function RecordActions({
             </button>
           </div>
         )}
-        {isIhale && record.status === "ihale_bekliyor" && (
+        {isIhale && status === "ihale_bekliyor" && (
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => {
@@ -165,10 +167,19 @@ export function RecordActions({
         )}
         <ErrorText error={guarantee.error} />
         <ErrorText error={prices.error && `Fiyatlar kaydedilemedi: ${prices.error}`} />
-        {sampleable && record.status === "numune_istendi" && (
+        {sampleable && status === "numune_istendi" && (
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => sent.run(() => markSampleSent(record.id))} className="btn-primary" disabled={sent.pending}>
-              {sent.pending ? <Loader2 size={18} className="animate-spin" /> : <Send size={17} />} Numune gönderildi
+            <button
+              onClick={() =>
+                sent.run(
+                  () => markSampleSent(record.id),
+                  undefined,
+                  () => setOpt({ status: "numune_gonderildi" }),
+                )
+              }
+              className="btn-primary"
+            >
+              <Send size={17} /> Numune gönderildi
             </button>
             <button onClick={() => setSheet("result")} className="btn-secondary">
               {isTender ? <FileSignature size={17} /> : <CheckCircle2 size={18} />} {isTender ? "Sözleşme / sonuç" : "Sonuç gir"}
@@ -178,18 +189,27 @@ export function RecordActions({
             </button>
           </div>
         )}
-        {sampleable && record.status === "numune_gonderildi" && (
+        {sampleable && status === "numune_gonderildi" && (
           <>
             <button onClick={() => setSheet("result")} className="btn-primary">
               {isTender ? <FileSignature size={17} /> : <CheckCircle2 size={18} />} {isTender ? "Sözleşme / sonuç" : "Sonuç gir"}
             </button>
             {/* Yanlışlıkla "Numune gönderildi" dendiyse: numune istendi durumuna döner. */}
-            <button onClick={() => sent.run(() => undoSampleSent(record.id))} className="btn-secondary" disabled={sent.pending}>
-              {sent.pending ? <Loader2 size={18} className="animate-spin" /> : <Undo2 size={17} />} Numune gönderildiyi geri al
+            <button
+              onClick={() =>
+                sent.run(
+                  () => undoSampleSent(record.id),
+                  undefined,
+                  () => setOpt({ status: "numune_istendi" }),
+                )
+              }
+              className="btn-secondary"
+            >
+              <Undo2 size={17} /> Numune gönderildiyi geri al
             </button>
           </>
         )}
-        {isTender && (record.status === "numune_istendi" || record.status === "numune_gonderildi") && (
+        {isTender && (status === "numune_istendi" || status === "numune_gonderildi") && (
           <button onClick={() => setSheet("prices")} className="btn-secondary">
             <Tag size={17} /> {opt.prices ? "Fiyatlarımız" : "Fiyatlarımızı gir"}
           </button>
@@ -200,12 +220,12 @@ export function RecordActions({
             <Truck size={18} /> Sevkiyata aktar
           </button>
         )}
-        {isGs && record.status === "acik" && (
+        {isGs && status === "acik" && (
           <button onClick={() => setSheet("result")} className="btn-primary">
             <CheckCircle2 size={18} /> Onayla
           </button>
         )}
-        {isIhale && record.status === "onaylandi" && (
+        {isIhale && status === "onaylandi" && (
           <button onClick={() => setSheet("adjust")} className="btn-secondary">
             <Scale size={17} /> İş artışı / eksiltmesi
           </button>
@@ -213,14 +233,14 @@ export function RecordActions({
         {(isDt || isGs || isTender) && decided && (
           <button onClick={() => setSheet("result")} className="btn-secondary">
             <Pencil size={17} />{" "}
-            {isDmo && record.status === "onaylandi"
+            {isDmo && status === "onaylandi"
               ? "Siparişi düzenle"
-              : isIhale && record.status === "onaylandi"
+              : isIhale && status === "onaylandi"
                 ? "Sözleşmeyi düzenle"
                 : "Sonucu düzenle"}
           </button>
         )}
-        {isYm && record.status === "acik" && (
+        {isYm && status === "acik" && (
           <button onClick={() => setSheet("ym")} className="btn-primary">
             <CheckCircle2 size={18} /> Sonuç gir
           </button>
