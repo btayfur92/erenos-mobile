@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth";
+import { LiveSearch } from "@/components/live-search";
 import { PageHeader } from "@/components/page-header";
 import { ShipmentCard } from "@/components/shipment-card";
 import { ManualShipmentCard } from "@/components/manual-shipment-card";
@@ -85,14 +86,7 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
         <form className="relative mb-3" action="">
           {done && <input type="hidden" name="d" value="tamam" />}
           <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Hastane, firma, dosya no veya ürün ara"
-            className="input pl-10"
-            type="search"
-            enterKeyHint="search"
-          />
+          <LiveSearch defaultValue={q} placeholder="Hastane, firma, dosya no veya ürün ara" />
         </form>
         <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 ring-1 ring-line">
           <Link

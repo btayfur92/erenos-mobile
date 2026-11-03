@@ -3,6 +3,7 @@ import { AlarmClock, ChartColumn, CheckCircle2, Clock, FileSignature, FileText, 
 import { requireUser } from "@/lib/auth";
 import { fetchProgress } from "@/lib/queries";
 import { getRates } from "@/lib/fx";
+import { LiveSearch } from "@/components/live-search";
 import { PageHeader } from "@/components/page-header";
 import { RecordCard } from "@/components/record-card";
 import { EmptyState } from "@/components/empty-state";
@@ -161,14 +162,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           {f !== "gundem" && <input type="hidden" name="f" value={f} />}
           {dParam && <input type="hidden" name="d" value={dParam} />}
           <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Hastane, dosya no veya ürün ara"
-            className="input pl-10"
-            type="search"
-            enterKeyHint="search"
-          />
+          <LiveSearch defaultValue={q} placeholder="Hastane, dosya no veya ürün ara" />
         </form>
 
         <ChipStrip>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Lock, NotebookPen, Search } from "lucide-react";
 import { requireUser } from "@/lib/auth";
+import { LiveSearch } from "@/components/live-search";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { MeetingCard, MeetingEditor } from "@/components/meetings";
@@ -66,14 +67,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
         <form className="relative" action="">
           {ozel && <input type="hidden" name="v" value="ozel" />}
           <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Hastane, servis veya not ara"
-            className="input pl-10"
-            type="search"
-            enterKeyHint="search"
-          />
+          <LiveSearch defaultValue={q} placeholder="Hastane, servis veya not ara" />
         </form>
         <div className="mt-4 space-y-3">
           {meetings?.length ? (
