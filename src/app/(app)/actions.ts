@@ -183,7 +183,7 @@ export async function undoSampleSent(recordId: string): Promise<ActionResult> {
   const { supabase, user } = ctx;
   const { data, error } = await supabase
     .from("records")
-    .update({ status: "numune_istendi", sample_sent_at: null, sample_sent_by: null })
+    .update({ status: "numune_istendi", sample_sent_at: null, sample_sent_by: null, sample_sent_note: null })
     .eq("id", recordId)
     .eq("status", "numune_gonderildi")
     .select("hospital")
@@ -197,17 +197,20 @@ export async function undoSampleSent(recordId: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-export async function markSampleSent(recordId: string): Promise<ActionResult> {
+export async function markSampleSent(recordId: string, note = ""): Promise<ActionResult> {
   const ctx = await requireRole("sell");
   if (!ctx) return { ok: false, error: NO_PERMISSION };
   const { supabase, user } = ctx;
   const { error } = await supabase.rpc("mark_sample_sent", { p_record_id: recordId });
   if (error) return fail(error);
+  const sentNote = note.trim() || null;
+  const { error: noteError } = await supabase.from("records").update({ sample_sent_note: sentNote }).eq("id", recordId);
+  if (noteError) return fail(noteError);
   const { data: rec } = await supabase.from("records").select("hospital, file_no").eq("id", recordId).single();
   notify(
     {
       title: `Numune gönderildi: ${rec?.hospital ?? ""}`,
-      body: `Doğrudan temin${rec?.file_no ? ` (${rec.file_no})` : ""} için sonuç bekleniyor.`,
+      body: `Doğrudan temin${rec?.file_no ? ` (${rec.file_no})` : ""} için sonuç bekleniyor.${sentNote ? ` Not: ${sentNote}` : ""}`,
       url: `/kayit/${recordId}`,
     },
     user.id,

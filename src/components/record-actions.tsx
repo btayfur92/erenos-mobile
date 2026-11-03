@@ -88,7 +88,7 @@ export function RecordActions({
   progress: Record<string, LineProgress>;
   samples?: SampleItem[];
 }) {
-  const [sheet, setSheet] = useState<null | "call" | "result" | "ship" | "sample" | "prices" | "adjust" | "ym">(null);
+  const [sheet, setSheet] = useState<null | "call" | "result" | "ship" | "sample" | "sent" | "prices" | "adjust" | "ym">(null);
   const close = () => setSheet(null);
   const isDt = record.type === "dogrudan_temin";
   const isGs = record.type === "genel_siparis";
@@ -169,16 +169,7 @@ export function RecordActions({
         <ErrorText error={prices.error && `Fiyatlar kaydedilemedi: ${prices.error}`} />
         {sampleable && status === "numune_istendi" && (
           <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() =>
-                sent.run(
-                  () => markSampleSent(record.id),
-                  undefined,
-                  () => setOpt({ status: "numune_gonderildi" }),
-                )
-              }
-              className="btn-primary"
-            >
+            <button onClick={() => setSheet("sent")} className="btn-primary">
               <Send size={17} /> Numune gönderildi
             </button>
             <button onClick={() => setSheet("result")} className="btn-secondary">
@@ -262,6 +253,19 @@ export function RecordActions({
       {/* Her açılışta güncel sonuçla yeniden başlasın diye yalnızca açıkken bağlanır */}
       {sheet === "result" && <ResultSheet open onClose={close} record={record} lines={lines} progress={progress} />}
       {sheet === "ym" && <YmSheet onClose={close} record={record} lines={lines} />}
+      {sheet === "sent" && (
+        <SampleSentSheet
+          onClose={close}
+          onSubmit={(note) => {
+            close();
+            sent.run(
+              () => markSampleSent(record.id, note),
+              undefined,
+              () => setOpt({ status: "numune_gonderildi" }),
+            );
+          }}
+        />
+      )}
       {sheet === "sample" && <SampleSheet open onClose={close} record={record} lines={lines} samples={samples} />}
       {sheet === "prices" && (
         <PricesSheet
@@ -337,6 +341,28 @@ function CallSheet({ open, onClose, record }: { open: boolean; onClose: () => vo
           }
         >
           <Spinner show={pending} /> Kaydet
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** "Numune gönderildi": isteğe bağlı kısa not (kargo, teslim alan kişi vb.). */
+function SampleSentSheet({ onClose, onSubmit }: { onClose: () => void; onSubmit: (note: string) => void }) {
+  const [note, setNote] = useState("");
+  return (
+    <Sheet open onClose={onClose} title="Numune gönderildi">
+      <div className="space-y-4">
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={3}
+          className="input resize-none"
+          placeholder="Not (isteğe bağlı). Ör. Yurtiçi Kargo ile gönderildi, eczaneye teslim edildi."
+          autoFocus
+        />
+        <button className="btn-primary w-full" onClick={() => onSubmit(note)}>
+          <Send size={17} /> Numune gönderildi
         </button>
       </div>
     </Sheet>

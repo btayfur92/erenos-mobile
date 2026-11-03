@@ -56,6 +56,7 @@ export interface SalesRecord {
   sample_note: string | null;
   sample_sent_at: string | null;
   sample_sent_by: string | null;
+  sample_sent_note: string | null;
   guarantee_paid_at: string | null;
   guarantee_paid_by: string | null;
   prices_entered_at: string | null;

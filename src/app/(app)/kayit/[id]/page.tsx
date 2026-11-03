@@ -421,7 +421,11 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                     <Send size={14} /> Gönderildi: {formatDateTime(record.sample_sent_at)}
                     {record.sample_sent_by && names[record.sample_sent_by] ? ` · ${names[record.sample_sent_by]}` : ""}
                   </p>
-                ) : (
+                ) : null}
+                {record.sample_sent_at && record.sample_sent_note && (
+                  <p className="whitespace-pre-line text-muted">{record.sample_sent_note}</p>
+                )}
+                {!record.sample_sent_at && (
                   !decided && (
                     <p className="text-muted">Henüz gönderilmedi. Gönderilene kadar mesai içinde 2 saatte bir hatırlatma gider.</p>
                   )
