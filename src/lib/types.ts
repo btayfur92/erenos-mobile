@@ -224,20 +224,20 @@ export interface Profile {
 
 /**
  * Kullanıcı tipleri: admin her şey + kullanıcı/şifre yönetimi; yönetici kullanıcı yönetimi hariç her şey;
- * satış gidecek sevkiyatta teslim edildi işaretleyemez (gelecekte teslim alındı der); sevkiyat yalnızca teslim işaretler, elle sevkiyat ve görüşme ekler.
+ * satış kayıt açar ve teslim işaretler (2026-11-27'den beri teslim edildi de diyebilir); sevkiyat yalnızca teslim işaretler, elle sevkiyat ve görüşme ekler.
  */
 export type UserRole = "admin" | "yonetici" | "satis" | "sevkiyat";
 export const USER_ROLES: { value: UserRole; label: string; hint: string }[] = [
   { value: "admin", label: "Admin", hint: "Her şey; kullanıcı açar, şifre değiştirir" },
   { value: "yonetici", label: "Yönetici", hint: "Kullanıcı yönetimi hariç her şey" },
-  { value: "satis", label: "Satış", hint: "Gidecekte teslim edildi diyemez; gelecekte teslim alındı der" },
+  { value: "satis", label: "Satış", hint: "Satış kayıtları ve sevkiyat; teslim edildi / alındı işaretler" },
   { value: "sevkiyat", label: "Sevkiyat", hint: "Teslim işaretler, sevkiyat ve görüşme ekler; kayıt açamaz" },
 ];
 export const ROLE_LABEL = Object.fromEntries(USER_ROLES.map((r) => [r.value, r.label])) as Record<UserRole, string>;
 /** Satış kayıtlarını açıp değiştirebilir, sevkiyata aktarabilir. */
 export const canSell = (role: UserRole) => role !== "sevkiyat";
-/** Gidecek sevkiyatta teslim edildi işaretleyebilir (gelecekte teslim alındıyı herkes işaretler). */
-export const canDeliver = (role: UserRole) => role !== "satis";
+/** Teslim edildi / teslim alındı işaretleyebilir: 2026-11-27'den beri tüm kullanıcı tipleri (satış dahil). */
+export const canDeliver = (role: UserRole) => USER_ROLES.some((r) => r.value === role);
 
 export const RECORD_TYPE_LABEL: Record<RecordType, string> = {
   yaklasik_maliyet: "Yaklaşık Maliyet",

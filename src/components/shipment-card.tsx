@@ -18,7 +18,7 @@ export function ShipmentCard({
   shipment: Shipment;
   showRecord?: boolean;
   names?: Record<string, string>;
-  /** Teslim edildi işaretleyebilir (satış kullanıcısında yok). */
+  /** Teslim edildi işaretleyebilir. */
   canDeliver?: boolean;
   /** Sevkiyatı iptal edebilir (sevkiyat kullanıcısında yok). */
   canCancel?: boolean;

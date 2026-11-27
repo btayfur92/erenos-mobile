@@ -12,7 +12,7 @@ import { NumInput } from "./num-input";
 import type { ManualShipment } from "@/lib/types";
 
 /** Elle eklenen sevkiyat kartı: gelecek (tedarikçiden bize) ya da doğrudan temine bağlı olmayan gidecek. */
-/** canDeliver: gidecekte teslim edildi işaretleyebilir (satış kullanıcısında yok; gelecekte teslim alındıyı herkes işaretler). */
+/** canDeliver: gidecekte teslim edildi işaretleyebilir (gelecekte teslim alındıyı herkes işaretler). */
 export function ManualShipmentCard({
   item,
   names,
