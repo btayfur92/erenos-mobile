@@ -1,27 +1,75 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Building2, Loader2, Lock, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Building2, Clock, FileText, Gavel, Loader2, Lock, NotebookPen, Package, Pencil, Plus, Trash2 } from "lucide-react";
 import { Sheet } from "@/components/sheet";
 import { deleteMeeting, saveMeeting } from "@/app/(app)/actions";
-import { formatDateTime, formatDateWithDay, todayIstanbul } from "@/lib/format";
-import type { Customer, Meeting } from "@/lib/types";
+import { formatDate, formatDateTime, formatDateWithDay, todayIstanbul } from "@/lib/format";
+import { RECORD_TYPE_LABEL, isTenderType, lineName, tenderTime, type Customer, type Meeting, type MeetingRecord } from "@/lib/types";
+import { StatusBadge, statusLabel } from "@/components/status-badge";
 import { CustomerPicker, hasCard, withCard } from "@/components/cards";
 
-/** mine: notu giren kişi bu kullanıcı; düzenleme ve silme yalnızca ona açık. canPrivate: admin (özel görüşme seçebilir). */
+/** Notun bağlı olduğu kayıt: tür + durum, ihale/dosya no, ilk iki ürün, ihale (ya da kayıt) tarihi. */
+function RecordSummary({ record: r, arrow = false }: { record: MeetingRecord; arrow?: boolean }) {
+  const names = [...(r.record_lines ?? [])].sort((a, b) => a.sort_order - b.sort_order).map(lineName);
+  const more = names.length - 2;
+  const tender = isTenderType(r.type);
+  return (
+    <>
+      <span className="flex items-center gap-2">
+        <span className="flex shrink-0 items-center gap-1.5 text-[13px] font-semibold text-brand-700">
+          <FileText size={14} className="shrink-0" /> {RECORD_TYPE_LABEL[r.type]}
+        </span>
+        <span className="min-w-0 flex-1">
+          <StatusBadge status={r.status} label={statusLabel(r)} />
+        </span>
+        {arrow && <ArrowRight size={15} className="shrink-0 text-brand-700" />}
+      </span>
+      {r.file_no && (
+        <span className="mt-1 block truncate text-[12px] text-muted">
+          {tender ? "İhale no: " : "Dosya no: "}
+          {r.file_no}
+        </span>
+      )}
+      {names.length > 0 && (
+        <span className="mt-1.5 flex items-start gap-1.5 text-[12px] text-ink/80">
+          <Package size={13} className="mt-0.5 shrink-0 text-muted" />
+          <span className="min-w-0">
+            {names.slice(0, 2).join(", ")}
+            {more > 0 && <b className="font-semibold"> +{more} kalem</b>}
+          </span>
+        </span>
+      )}
+      <span className="mt-1 flex items-center gap-1.5 text-[12px] text-ink/80">
+        {tender ? <Gavel size={13} className="shrink-0 text-muted" /> : <Clock size={13} className="shrink-0 text-muted" />}
+        {tender
+          ? `${r.type === "dmo_ihalesi" ? "DMO" : "İhale"}: ${formatDate(r.record_date)} · ${tenderTime(r.tender_time)}`
+          : `Tarih: ${formatDate(r.record_date)}`}
+      </span>
+    </>
+  );
+}
+
+/**
+ * mine: notu giren kişi bu kullanıcı; düzenleme ve silme yalnızca ona açık. canPrivate: admin (özel görüşme seçebilir).
+ * inRecord: kaydın kendi sayfasında gösteriliyor (kayıt bağlantısı gizlenir).
+ */
 export function MeetingCard({
   meeting: m,
   names,
   customers,
   mine,
   canPrivate,
+  inRecord = false,
 }: {
   meeting: Meeting;
   names: Record<string, string>;
   customers: Customer[];
   mine: boolean;
   canPrivate: boolean;
+  inRecord?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   return (
@@ -51,13 +99,20 @@ export function MeetingCard({
         )}
       </div>
       <p className="mt-3 whitespace-pre-line rounded-xl bg-canvas px-3 py-2.5 text-[14px] leading-relaxed">{m.note}</p>
+      {m.record && !inRecord && (
+        <Link href={`/kayit/${m.record.id}`} prefetch={false} className="mt-2 block rounded-xl bg-brand-50 px-3 py-2.5">
+          <RecordSummary record={m.record} arrow />
+        </Link>
+      )}
       <p className="mt-2 text-[12px] text-muted">
         {m.created_by && names[m.created_by] ? names[m.created_by] : "—"}
         {m.updated_at
           ? ` · düzenlendi ${formatDateTime(m.updated_at)}${m.updated_by && names[m.updated_by] ? ` (${names[m.updated_by]})` : ""}`
           : ""}
       </p>
-      {editing && <MeetingSheet meeting={m} customers={customers} canPrivate={canPrivate} onClose={() => setEditing(false)} />}
+      {editing && (
+        <MeetingSheet meeting={m} record={m.record} customers={customers} canPrivate={canPrivate} onClose={() => setEditing(false)} />
+      )}
     </div>
   );
 }
@@ -85,14 +140,45 @@ export function MeetingEditor({
   );
 }
 
+/** Satış kaydının sayfasındaki "Görüşme notu ekle": hastane kayıttan gelir, not kayda bağlanır. Her kullanıcı tipine açık. */
+export function RecordMeetingButton({
+  record,
+  hospital,
+  customers,
+  canPrivate,
+}: {
+  record: MeetingRecord;
+  hospital: string;
+  customers: Customer[];
+  canPrivate: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="btn-secondary w-full">
+        <NotebookPen size={17} /> Görüşme notu ekle
+      </button>
+      {open && (
+        <MeetingSheet record={record} hospital={hospital} customers={customers} canPrivate={canPrivate} onClose={() => setOpen(false)} />
+      )}
+    </>
+  );
+}
+
 function MeetingSheet({
   meeting,
+  record,
+  hospital,
   customers: initialCustomers,
   canPrivate,
   defaultPrivate = false,
   onClose,
 }: {
   meeting?: Meeting;
+  /** Not bir kayda bağlıysa (ya da kayıt sayfasından ekleniyorsa) o kayıt. */
+  record?: MeetingRecord | null;
+  /** Kayıt sayfasından eklenirken önceden seçili hastane. */
+  hospital?: string;
   customers: Customer[];
   canPrivate: boolean;
   defaultPrivate?: boolean;
@@ -106,7 +192,7 @@ function MeetingSheet({
   const [error, setError] = useState<string>();
   const [form, setForm] = useState({
     meeting_date: meeting?.meeting_date ?? todayIstanbul(),
-    hospital: meeting?.hospital ?? "",
+    hospital: meeting?.hospital ?? hospital ?? "",
     department: meeting?.department ?? "",
     note: meeting?.note ?? "",
   });
@@ -122,7 +208,7 @@ function MeetingSheet({
           : "Hastane seçin.",
       );
     start(async () => {
-      const r = await saveMeeting({ ...form, id: meeting?.id, private: canPrivate && isPrivate });
+      const r = await saveMeeting({ ...form, id: meeting?.id, private: canPrivate && isPrivate, record_id: meeting ? undefined : record?.id });
       if (!r.ok) return setError(r.error);
       onClose();
       router.refresh();
@@ -172,6 +258,11 @@ function MeetingSheet({
           </label>
           <input id="m_date" type="date" value={form.meeting_date} onChange={set("meeting_date")} className="input" required />
         </div>
+        {record && (
+          <div className="rounded-xl bg-brand-50 px-3 py-2.5">
+            <RecordSummary record={record} />
+          </div>
+        )}
         <div>
           <label className="field-label" htmlFor="m_hospital">
             Hastane

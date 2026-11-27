@@ -195,6 +195,19 @@ export interface Product {
 /** Kart adlarını Türkçe büyük/küçük harf farkı gözetmeden karşılaştırmak için. */
 export const cardKey = (name: string) => name.trim().toLocaleLowerCase("tr-TR");
 
+/** Görüşme notunun bağlı olduğu kaydın özeti (tür, durum, ürünler, ihale tarihi). */
+export interface MeetingRecord {
+  id: string;
+  type: RecordType;
+  status: RecordStatus;
+  file_no: string | null;
+  record_date: string;
+  tender_time: string | null;
+  record_lines?: { product_name: string; region: string | null; sort_order: number }[];
+}
+/** Görüşme notuyla birlikte kayıt özetini getiren select. */
+export const MEETING_SELECT = "*, record:records(id, type, status, file_no, record_date, tender_time, record_lines(product_name, region, sort_order))";
+
 export interface Meeting {
   id: string;
   meeting_date: string;
@@ -204,6 +217,9 @@ export interface Meeting {
   note: string;
   /** Özel görüşme: yalnızca adminler görür. */
   private: boolean;
+  /** Not bir satış kaydının sayfasından eklendiyse o kayıt. */
+  record_id: string | null;
+  record?: MeetingRecord | null;
   created_by: string | null;
   created_at: string;
   updated_by: string | null;

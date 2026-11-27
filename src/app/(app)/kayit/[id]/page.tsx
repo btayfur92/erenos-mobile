@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight, BadgeCheck, FlaskConical, MessageSquareText, Pencil, Phone, Send, Tag, User } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { fetchProgress } from "@/lib/queries";
+import { fetchCards, fetchProgress } from "@/lib/queries";
 import { formatDate, formatDateTime, formatMoney, formatPhone, formatQty, singleTotal, todayIstanbul } from "@/lib/format";
 import { getRates } from "@/lib/fx";
 import { telHref } from "@/lib/phone";
@@ -13,6 +13,7 @@ import {
   tenderCountdown,
   tenderTime,
   type CallLog,
+  type Meeting,
   type ContractAdjustment,
   type LineProgress,
   type Profile,
@@ -29,6 +30,7 @@ import { ContractTimeBar, ProgressBar, ProgressStats } from "@/components/line-p
 import { TenderComparison } from "@/components/tender";
 import { DeleteButton, RecordActions } from "@/components/record-actions";
 import { ShipmentCard } from "@/components/shipment-card";
+import { MeetingCard, RecordMeetingButton } from "@/components/meetings";
 
 function Section({ title, children, aside }: { title: string; children: React.ReactNode; aside?: React.ReactNode }) {
   return (
@@ -44,7 +46,7 @@ function Section({ title, children, aside }: { title: string; children: React.Re
 
 export default async function RecordPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { supabase, profile } = await requireUser();
+  const { supabase, user, profile } = await requireUser();
   const seller = canSell(profile.role);
   const deliverer = canDeliver(profile.role);
 
@@ -63,6 +65,8 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
     { data: samples },
     { data: bids },
     { data: adjustments },
+    { data: meetings },
+    { customers },
   ] = await Promise.all([
     supabase.from("call_logs").select("*").eq("record_id", id).order("created_at", { ascending: false }).returns<CallLog[]>(),
     supabase
@@ -92,6 +96,14 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
           .order("created_at", { ascending: false })
           .returns<ContractAdjustment[]>()
       : Promise.resolve({ data: [] as ContractAdjustment[] }),
+    supabase
+      .from("meetings")
+      .select("*")
+      .eq("record_id", id)
+      .order("meeting_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .returns<Meeting[]>(),
+    fetchCards(supabase),
   ]);
   const today = todayIstanbul();
 
@@ -250,6 +262,21 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
               </Link>
             )}
             {seller && <RecordActions key={record.id} record={record} lines={lines} progress={progress} samples={samples ?? []} />}
+            {/* Görüşme notu her kullanıcı tipine açık; Görüşmeler sekmesinde hastane adıyla görünür. */}
+            <RecordMeetingButton
+              record={{
+                id: record.id,
+                type: record.type,
+                status: record.status,
+                file_no: record.file_no,
+                record_date: record.record_date,
+                tender_time: record.tender_time,
+                record_lines: lines.map((l) => ({ product_name: l.product_name, region: l.region, sort_order: l.sort_order })),
+              }}
+              hospital={record.hospital}
+              customers={customers}
+              canPrivate={profile.is_admin}
+            />
           </div>
         </div>
 
@@ -458,6 +485,24 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
                 Henüz görüşme kaydı yok. Hastane arandıktan sonra not girilene kadar hatırlatma gönderilir.
               </p>
             )}
+          </Section>
+        )}
+
+        {!!meetings?.length && (
+          <Section title="Görüşme notları">
+            <div className="space-y-3">
+              {meetings.map((m) => (
+                <MeetingCard
+                  key={m.id}
+                  meeting={m}
+                  names={names}
+                  customers={customers}
+                  mine={m.created_by === user.id}
+                  canPrivate={profile.is_admin}
+                  inRecord
+                />
+              ))}
+            </div>
           </Section>
         )}
 

@@ -658,6 +658,8 @@ export interface MeetingInput {
   department: string;
   note: string;
   private?: boolean;
+  /** Kayıt sayfasından eklenen not o kayda bağlanır (yalnızca ilk kayıtta). */
+  record_id?: string | null;
 }
 
 export async function saveMeeting(input: MeetingInput): Promise<ActionResult> {
@@ -689,7 +691,11 @@ export async function saveMeeting(input: MeetingInput): Promise<ActionResult> {
     return { ok: true, id: input.id };
   }
 
-  const { data, error } = await supabase.from("meetings").insert(fields).select("id").single();
+  const { data, error } = await supabase
+    .from("meetings")
+    .insert({ ...fields, record_id: input.record_id || null })
+    .select("id")
+    .single();
   if (error) return fail(error);
   const excerpt = fields.note.length > 120 ? `${fields.note.slice(0, 117)}…` : fields.note;
   if (fields.private) {

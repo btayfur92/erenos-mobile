@@ -6,7 +6,7 @@ import { LiveSearch } from "@/components/live-search";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { MeetingCard, MeetingEditor } from "@/components/meetings";
-import type { Meeting, Profile } from "@/lib/types";
+import { MEETING_SELECT, type Meeting, type Profile } from "@/lib/types";
 import { fetchCards } from "@/lib/queries";
 
 export const metadata: Metadata = { title: "Görüşmeler" };
@@ -24,7 +24,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
 
   let query = supabase
     .from("meetings")
-    .select("*")
+    .select(MEETING_SELECT)
     .eq("private", ozel)
     .order("meeting_date", { ascending: false })
     .order("created_at", { ascending: false })
