@@ -100,6 +100,7 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
       .from("meetings")
       .select("*")
       .eq("record_id", id)
+      .eq("kind", "ziyaret")
       .order("meeting_date", { ascending: false })
       .order("created_at", { ascending: false })
       .returns<Meeting[]>(),

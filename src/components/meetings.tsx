@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowRight, Building2, Clock, FileText, Gavel, Loader2, Lock, NotebookPen, Package, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Building2, Clock, FileText, Gavel, Loader2, Lock, NotebookPen, Package, Pencil, Phone, Plus, Trash2 } from "lucide-react";
 import { Sheet } from "@/components/sheet";
 import { deleteMeeting, saveMeeting } from "@/app/(app)/actions";
 import { formatDate, formatDateTime, formatDateWithDay, todayIstanbul } from "@/lib/format";
@@ -79,6 +79,11 @@ export function MeetingCard({
           <Building2 size={20} />
         </span>
         <div className="min-w-0 flex-1">
+          {m.kind === "arama" && (
+            <span className="mb-0.5 inline-flex items-center gap-1 rounded-md bg-brand-50 px-1.5 py-px text-[11px] font-semibold text-brand-700">
+              <Phone size={11} /> Arama notu
+            </span>
+          )}
           {m.private && (
             <span className="mb-0.5 inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-px text-[11px] font-semibold text-amber-700">
               <Lock size={11} /> Özel görüşme
@@ -88,7 +93,7 @@ export function MeetingCard({
           <p className="text-[12px] font-semibold text-ink/80">{formatDateWithDay(m.meeting_date)}</p>
           <p className="text-[12px] text-muted">{m.department}</p>
         </div>
-        {mine && (
+        {mine && m.kind !== "arama" && (
           <button
             onClick={() => setEditing(true)}
             className="-mr-1 -mt-1 grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-canvas"
@@ -251,7 +256,13 @@ function MeetingSheet({
             ))}
           </div>
         )}
-        {canPrivate && isPrivate && <p className="-mt-2 text-[13px] text-muted">Özel görüşmeyi yalnızca adminler görür.</p>}
+        <p className={`text-[13px] text-muted ${canPrivate ? "-mt-2" : ""}`}>
+          {canPrivate && isPrivate
+            ? "Özel görüşmeyi yalnızca adminler görür."
+            : (meeting ? meeting.record_id : record)
+              ? "Bu notu herkes görür."
+              : "Bu notu yalnızca adminler ve yöneticiler görür."}
+        </p>
         <div>
           <label className="field-label" htmlFor="m_date">
             Tarih

@@ -713,7 +713,29 @@ export async function saveMeeting(input: MeetingInput): Promise<ActionResult> {
           console.error("[push] bildirim gönderilemedi", err);
         }
       });
-  } else notify({ title: `Yeni görüşme notu: ${fields.hospital}`, body: `${fields.department} · ${excerpt}`, url: "/gorusmeler" }, user.id);
+  } else if (input.record_id) {
+    // Kayıt sayfasından girilen notu herkes görür, bildirim herkese gider.
+    notify({ title: `Yeni görüşme notu: ${fields.hospital}`, body: `${fields.department} · ${excerpt}`, url: "/gorusmeler" }, user.id);
+  } else {
+    // Görüşmeler sekmesinden girilen notu yalnızca adminler ve yöneticiler görür; bildirim de yalnızca onlara gider.
+    const { data: managers } = await supabase
+      .from("profiles")
+      .select("id")
+      .in("role", ["admin", "yonetici"])
+      .eq("active", true);
+    const ids = (managers ?? []).map((a) => a.id).filter((id) => id !== user.id);
+    if (ids.length)
+      after(async () => {
+        try {
+          await sendToAll(
+            { title: `Yeni görüşme notu: ${fields.hospital}`, body: `${fields.department} · ${excerpt}`, url: "/gorusmeler" },
+            { onlyUserIds: ids },
+          );
+        } catch (err) {
+          console.error("[push] bildirim gönderilemedi", err);
+        }
+      });
+  }
   refresh();
   return { ok: true, id: data.id };
 }

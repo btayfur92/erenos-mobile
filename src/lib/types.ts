@@ -220,6 +220,9 @@ export interface Meeting {
   /** Not bir satış kaydının sayfasından eklendiyse o kayıt. */
   record_id: string | null;
   record?: MeetingRecord | null;
+  /** ziyaret: elle girilen görüşme notu; arama: kayıttaki arama notundan otomatik kopya (düzenlenmez). */
+  kind: "ziyaret" | "arama";
+  call_log_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_by: string | null;
